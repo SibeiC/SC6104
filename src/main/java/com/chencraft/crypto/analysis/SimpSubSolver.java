@@ -1,8 +1,8 @@
 package com.chencraft.crypto.analysis;
 
+import com.chencraft.crypto.algo.SimpleSubstitutionAlgorithm;
 import com.chencraft.crypto.data.DefaultLetterFrequency;
 import com.chencraft.crypto.models.LetterFrequency;
-import com.chencraft.crypto.simpleSubstituion.SimpleSubstitutionAlgorithm;
 import com.chencraft.crypto.utils.Decrypt;
 import lombok.extern.slf4j.Slf4j;
 import org.sk.PrettyTable;

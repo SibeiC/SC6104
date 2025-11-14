@@ -1,4 +1,4 @@
-package com.chencraft.crypto.simpleSubstituion;
+package com.chencraft.crypto.algo;
 
 import com.chencraft.crypto.SymmetricKeyAlgorithm;
 
