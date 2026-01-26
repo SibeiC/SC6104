@@ -6,7 +6,7 @@ This project demonstrates the Bleichenbacher padding oracle attack on RSA PKCS#1
 
 ## Project Structure
 
-```
+```plaintext
 SC6104/
 ├── server/              # Vulnerable RSA server
 │   └── server.py        # Server with padding oracle vulnerability
