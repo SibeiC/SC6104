@@ -4,8 +4,9 @@ Bleichenbacher Attack Client
 Implements a TLS client with Bleichenbacher padding oracle attack capabilities.
 """
 
+from typing import Any, Dict, Optional
+
 import requests
-from typing import Optional, Dict, Any, List, Tuple
 
 
 class BleichenbacherClient:
@@ -44,68 +45,17 @@ class BleichenbacherClient:
 
     def perform_handshake(self) -> bool:
         """
-        Perform a complete TLS handshake with the server.
+        Perform minimal handshake to get server's public key.
 
         Returns:
             True if handshake successful, False otherwise
         """
-        # TODO: Implement complete handshake sequence
         try:
-            self.send_client_hello()
-            self.receive_server_hello()
             self.receive_certificate()
-            self.receive_server_key_exchange()
-            self.receive_server_hello_done()
-            self.send_client_key_exchange()
-            self.send_change_cipher_spec()
-            self.send_finished()
             return True
         except Exception as e:
             print(f"Handshake failed: {e}")
             return False
-
-    def send_client_hello(self) -> Dict[str, Any]:
-        """
-        Send ClientHello message to initiate TLS handshake.
-
-        Sends:
-            - client_version: TLS version (e.g., "TLS 1.2")
-            - random: 32 random bytes
-            - session_id: Session identifier
-            - cipher_suites: List including RSA_PKCS1 vulnerable suite
-            - compression_methods: Supported compression methods
-
-        Returns:
-            Server response
-        """
-        # TODO: Implement ClientHello with cipher suite selection
-        # Must include TLS_RSA_WITH_* cipher suite (uses PKCS#1 v1.5)
-        payload = {
-            "client_version": "TLS 1.2",
-            "random": None,  # TODO: Generate 32 random bytes
-            "session_id": None,
-            "cipher_suites": [
-                "TLS_RSA_WITH_AES_128_CBC_SHA",  # Vulnerable to Bleichenbacher
-                "TLS_RSA_WITH_AES_256_CBC_SHA"
-            ],
-            "compression_methods": ["null"]
-        }
-        response = self.session.post(
-            f"{self.base_url}/client-hello", json=payload)
-        return response.json()
-
-    def receive_server_hello(self) -> Dict[str, Any]:
-        """
-        Receive ServerHello message from server.
-
-        Returns:
-            Server hello response containing selected cipher suite
-        """
-        # TODO: Implement ServerHello reception and parsing
-        response = self.session.get(f"{self.base_url}/server-hello")
-        data = response.json()
-        # Extract server random and cipher suite
-        return data
 
     def receive_certificate(self) -> Dict[str, Any]:
         """
@@ -119,28 +69,6 @@ class BleichenbacherClient:
         data = response.json()
         self.server_public_key = data.get("public_key")
         return data
-
-    def receive_server_key_exchange(self) -> Dict[str, Any]:
-        """
-        Receive ServerKeyExchange (may not be sent for RSA key exchange).
-
-        Returns:
-            Key exchange parameters if sent
-        """
-        # TODO: Implement ServerKeyExchange reception
-        response = self.session.get(f"{self.base_url}/server-key-exchange")
-        return response.json()
-
-    def receive_server_hello_done(self) -> Dict[str, Any]:
-        """
-        Receive ServerHelloDone message.
-
-        Returns:
-            Server hello done acknowledgment
-        """
-        # TODO: Implement ServerHelloDone reception
-        response = self.session.get(f"{self.base_url}/server-hello-done")
-        return response.json()
 
     def send_client_key_exchange(self, encrypted_pms: Optional[bytes] = None) -> Dict[str, Any]:
         """
@@ -170,36 +98,6 @@ class BleichenbacherClient:
         }
         response = self.session.post(
             f"{self.base_url}/client-key-exchange", json=payload)
-        return response.json()
-
-    def send_change_cipher_spec(self) -> Dict[str, Any]:
-        """
-        Send ChangeCipherSpec to indicate switch to encrypted communication.
-
-        Returns:
-            Server acknowledgment
-        """
-        # TODO: Implement ChangeCipherSpec
-        payload = {
-            "change_cipher_spec": True
-        }
-        response = self.session.post(
-            f"{self.base_url}/change-cipher-spec", json=payload)
-        return response.json()
-
-    def send_finished(self) -> Dict[str, Any]:
-        """
-        Send Finished message with verification data.
-
-        Returns:
-            Server's Finished message
-        """
-        # TODO: Implement Finished message
-        # Must include PRF output of all handshake messages
-        payload = {
-            "verify_data": None  # TODO: Compute verification hash
-        }
-        response = self.session.post(f"{self.base_url}/finished", json=payload)
         return response.json()
 
     # Bleichenbacher Attack Methods
