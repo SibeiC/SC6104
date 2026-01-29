@@ -94,7 +94,7 @@ python run.py --help
 The integrated demo performs a complete Bleichenbacher attack:
 
 1. **Server Initialization**
-   - Generates RSA-2048 key pair (or loads from files if provided)
+   - Generates RSA-1024 key pair for fast demo (or loads from files if provided)
    - Starts Flask server with vulnerable TLS endpoints
    - Exposes padding oracle through error messages
 
@@ -236,8 +236,8 @@ After convergence, the single remaining value is the original plaintext m.
 
 ### Complexity
 
-- **Oracle queries**: ~10^6 queries for RSA-2048 (million queries)
-- **Time**: Minutes to hours depending on key size and network latency
+- **Oracle queries**: ~10^6 queries for RSA-2048, much fewer for smaller keys
+- **Time**: Minutes to hours for 2048-bit keys, much faster for 1024-bit demo keys
 - **Success rate**: Nearly 100% with sufficient queries
 
 ### Real-World Impact
@@ -262,7 +262,7 @@ This attack affected:
 
 - **Framework**: Flask REST API
 - **RSA Key Management**:
-  - Auto-generates RSA-2048 keys on startup
+  - Auto-generates RSA-1024 keys on startup (fast demo mode)
   - Loads keys from PEM files if provided
   - Saves keys in debug mode for inspection
 - **Vulnerable Endpoint**: \`/client-key-exchange\`
@@ -315,10 +315,10 @@ These files are automatically ignored by git (see \`.gitignore\`).
 
 ### Performance Notes
 
-- **Key Generation**: ~1-2 seconds for RSA-2048
+- **Key Generation**: < 1 second for RSA-1024 (demo mode)
 - **Single Oracle Query**: ~5-10ms (local), ~50-100ms (network)
-- **Attack Duration**: 5-10 iterations (demonstration mode, limited queries)
-- **Full Attack**: Would require thousands of queries to fully converge
+- **Attack Duration**: Varies by key size and search space
+- **Full Attack**: RSA-1024 converges much faster than RSA-2048 (ideal for demos)
 
 ### Limitations (Educational Version)
 
