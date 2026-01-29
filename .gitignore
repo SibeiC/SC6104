@@ -173,4 +173,9 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 
+# RSA key files (generated in debug mode)
+*.pem
+server_private_key.pem
+server_public_key.pem
+
 # End of https://www.toptal.com/developers/gitignore/api/python

@@ -36,16 +36,24 @@ class AttackDemo:
     Demo orchestrator for Bleichenbacher attack simulation.
     """
 
-    def __init__(self, host: str = "localhost", port: int = 5000):
+    def __init__(self, host: str = "localhost", port: int = 7265,
+                 private_key_file: str = None, public_key_file: str = None,
+                 debug: bool = False):
         """
         Initialize the demo.
 
         Args:
             host: Server host address
             port: Server port number
+            private_key_file: Path to private key file (optional)
+            public_key_file: Path to public key file (optional)
+            debug: Enable debug mode (saves keys to files)
         """
         self.host = host
         self.port = port
+        self.private_key_file = private_key_file
+        self.public_key_file = public_key_file
+        self.debug = debug
         self.server: Optional[TLSServer] = None
         self.server_thread: Optional[threading.Thread] = None
         self.client: Optional[BleichenbacherClient] = None
@@ -54,16 +62,13 @@ class AttackDemo:
         """Start the TLS server in a separate thread."""
         print(f"{Colors.CYAN}[*] Initializing TLS Server...{Colors.END}")
 
-        # In a real implementation, these would be actual RSA keys
-        # For demo purposes, using placeholder strings
-        private_key = "-----BEGIN RSA PRIVATE KEY-----\nPLACEHOLDER\n-----END RSA PRIVATE KEY-----"
-        public_key = "-----BEGIN PUBLIC KEY-----\nPLACEHOLDER\n-----END PUBLIC KEY-----"
-
-        # Create server instance
+        # Create server instance with key file support
+        # Keys will be auto-generated if files are not provided
         self.server = TLSServer(
-            private_key=private_key,
-            public_key=public_key,
-            port=self.port
+            port=self.port,
+            private_key_file=self.private_key_file,
+            public_key_file=self.public_key_file,
+            debug=self.debug
         )
 
         # Disable Flask's default logging for cleaner output
@@ -214,9 +219,21 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Parse command line arguments (optional)
+    # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description='Bleichenbacher Attack Demo'
+        description='Bleichenbacher Attack Demo',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run with auto-generated keys
+  python run.py
+  
+  # Run with custom keys from files
+  python run.py --private-key server_private_key.pem --public-key server_public_key.pem
+  
+  # Run in debug mode (saves generated keys to files)
+  python run.py --debug
+        """
     )
     parser.add_argument(
         '--host',
@@ -226,14 +243,35 @@ def main():
     parser.add_argument(
         '--port',
         type=int,
-        default=5000,
-        help='Server port number (default: 5000)'
+        default=7265,
+        help='Server port number (default: 7265)'
+    )
+    parser.add_argument(
+        '--private-key',
+        dest='private_key_file',
+        help='Path to armored private key file (PEM format)'
+    )
+    parser.add_argument(
+        '--public-key',
+        dest='public_key_file',
+        help='Path to armored public key file (PEM format)'
+    )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable debug mode (saves generated keys to files)'
     )
 
     args = parser.parse_args()
 
     # Run demo
-    demo = AttackDemo(host=args.host, port=args.port)
+    demo = AttackDemo(
+        host=args.host,
+        port=args.port,
+        private_key_file=args.private_key_file,
+        public_key_file=args.public_key_file,
+        debug=args.debug
+    )
     demo.run_demo()
 
 

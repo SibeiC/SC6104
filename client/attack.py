@@ -260,7 +260,7 @@ class BleichenbacherClient:
 
 if __name__ == "__main__":
     # Example usage
-    client = BleichenbacherClient(server_host="localhost", server_port=5000)
+    client = BleichenbacherClient(server_host="localhost", server_port=7265)
 
     # Check server health
     if client.health_check():
