@@ -64,11 +64,19 @@ class BleichenbacherClient:
         Returns:
             Certificate data including server's RSA public key
         """
-        # TODO: Implement certificate reception and public key extraction
         response = self.session.get(f"{self.base_url}/certificate")
-        data = response.json()
-        self.server_public_key = data.get("public_key")
-        return data
+        self.server_public_key = response.json().get("public_key")
+
+    def simulate_captured_message(self) -> bytes:
+        """
+        Simulate capturing an encrypted premaster secret from a ClientKeyExchange.
+
+        Returns:
+            Captured encrypted premaster secret (ciphertext)
+        """
+        response = self.session.get(f"{self.base_url}/captured-message")
+        ciphertext_hex = response.json().get("encrypted_message")
+        return bytes.fromhex(ciphertext_hex)
 
     def send_client_key_exchange(self, encrypted_pms: Optional[bytes] = None) -> Dict[str, Any]:
         """
@@ -94,14 +102,13 @@ class BleichenbacherClient:
             encrypted_pms = self._encrypt_premaster_secret()
 
         payload = {
-            "encrypted_premaster_secret": encrypted_pms
+            "encrypted_premaster_secret": encrypted_pms.hex()
         }
         response = self.session.post(
             f"{self.base_url}/client-key-exchange", json=payload)
         return response.json()
 
     # Bleichenbacher Attack Methods
-
     def execute_bleichenbacher_attack(self, target_ciphertext: bytes) -> Optional[bytes]:
         """
         Execute Bleichenbacher padding oracle attack to decrypt ciphertext.
@@ -269,11 +276,12 @@ if __name__ == "__main__":
         # Perform handshake
         if client.perform_handshake():
             print("[+] Handshake successful")
-
-            # Execute Bleichenbacher attack
-            # target_ciphertext = b"..."  # Captured encrypted premaster secret
-            # plaintext = client.execute_bleichenbacher_attack(target_ciphertext)
-            # print(f"[+] Recovered plaintext: {plaintext}")
+            target_ciphertext = client.simulate_captured_message()
+            plaintext = client.execute_bleichenbacher_attack(target_ciphertext)
+            if plaintext:
+                print(f"[+] Attack successful! Recovered plaintext: {plaintext}")
+            else:
+                print("[-] Attack failed to recover plaintext")
         else:
             print("[-] Handshake failed")
     else:

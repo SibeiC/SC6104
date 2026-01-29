@@ -77,7 +77,7 @@ class TLSServer:
         self.app.route('/certificate', methods=['GET'])(self.certificate)
         self.app.route('/client-key-exchange',
                        methods=['POST'])(self.client_key_exchange)
-        self.app.route('/captured-messages', methods=['GET'])(self.captured_messages)
+        self.app.route('/captured-message', methods=['GET'])(self.captured_message)
         self.app.route('/health', methods=['GET'])(self.health_check)
 
     def _setup_keys(self, private_key, public_key, private_key_file, public_key_file):
