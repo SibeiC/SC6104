@@ -127,13 +127,19 @@ class AttackDemo:
 
         # Simulate attack execution
         try:
-            # In a real implementation, we would:
-            # 1. Capture the encrypted premaster secret
-            # 2. Run the attack algorithm
-            target_ciphertext = b"CAPTURED_ENCRYPTED_PREMASTER_SECRET"
-
+            # Step 1: Perform handshake to get server's public key
+            print(f"\n{Colors.CYAN}[*] Performing TLS handshake...{Colors.END}")
+            if not self.client.perform_handshake():
+                print(f"{Colors.RED}[-] Handshake failed!{Colors.END}")
+                return False
+            print(f"{Colors.GREEN}[+] Handshake successful{Colors.END}")
+            
+            # Step 2: Capture an encrypted message from the server
+            print(f"\n{Colors.CYAN}[*] Capturing encrypted message...{Colors.END}")
+            target_ciphertext = self.client.simulate_captured_message()
+            print(f"{Colors.GREEN}[+] Captured {len(target_ciphertext)} bytes{Colors.END}")
             print(
-                f"\n{Colors.CYAN}[*] Target ciphertext: {target_ciphertext[:20]}...{Colors.END}")
+                f"{Colors.CYAN}[*] Target ciphertext (hex): {target_ciphertext.hex()[:40]}...{Colors.END}")
             print(f"{Colors.CYAN}[*] Beginning oracle queries...{Colors.END}")
 
             # Execute attack

@@ -10,34 +10,63 @@ from flask import Flask, request, jsonify
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric.padding import calculate_max_pss_salt_length
+
+def decrypt_secret_raw(data: bytes, private_key) -> bytes:
+    """Manually decrypt RSA ciphertext without automatic padding removal."""
+    # Get the private key numbers
+    private_numbers = private_key.private_numbers()
+    n = private_numbers.public_numbers.n
+    d = private_numbers.d
+    
+    # Convert ciphertext bytes to integer
+    c = int.from_bytes(data, byteorder='big')
+    
+    # Perform raw RSA decryption: m = c^d mod n
+    m = pow(c, d, n)
+    
+    # Convert back to bytes (should be same length as modulus)
+    k = (n.bit_length() + 7) // 8
+    return m.to_bytes(k, byteorder='big')
 
 def decrypt_secret(data, private_key) -> bytes:
-    """Decrypt the encrypted premaster secret using RSA private key."""
+    """Decrypt the encrypted premaster secret using RSA private key.
+    
+    Returns the raw decrypted bytes including PKCS#1 v1.5 padding.
+    """ 
     try:
-        plaintext = private_key.decrypt(
-            data,
-            padding.PKCS1v15()
-        )
-        return plaintext
+        # Use raw decryption to get padded plaintext
+        return decrypt_secret_raw(data, private_key)
     except Exception as e:
         raise ValueError(f"Decryption failed: {e}")
 
 def valid_format(decrypted_premaster_secret: bytes) -> bool:
-    """Check if decrypted premaster secret has valid PKCS#1 v1.5 format."""
-    # PKCS#1 v1.5 padding format: 0x00 0x02 [random non-zero bytes] 0x00 [data]
+    """Check if decrypted premaster secret has valid PKCS#1 v1.5 format.
+    
+    This is the padding oracle! It reveals whether the padding is valid.
+    PKCS#1 v1.5 format: 0x00 0x02 [8+ non-zero random bytes] 0x00 [data]
+    """
     if len(decrypted_premaster_secret) < 11:
         return False
+    
+    # Check for 0x00 0x02 header
     if decrypted_premaster_secret[0] != 0x00:
         return False
     if decrypted_premaster_secret[1] != 0x02:
         return False
-    # Find the 0x00 separator after padding
+    
+    # Find the 0x00 separator after padding (must have at least 8 bytes of padding)
     try:
         separator_index = decrypted_premaster_secret.index(0x00, 2)
         if separator_index < 10:  # At least 8 bytes of random padding
             return False
+        # Verify padding bytes are non-zero
+        for i in range(2, separator_index):
+            if decrypted_premaster_secret[i] == 0x00:
+                return False
         return True
     except ValueError:
+        # No separator found
         return False
 
 class TLSServer:
@@ -188,18 +217,35 @@ class TLSServer:
         Returns:
             Acknowledgment of key exchange
         """
-        data = request.get_data()
+        # Try to get JSON data first, fall back to raw data
+        try:
+            json_data = request.get_json()
+            if json_data and 'encrypted_premaster_secret' in json_data:
+                # Hex-encoded data from JSON
+                data = bytes.fromhex(json_data['encrypted_premaster_secret'])
+            else:
+                # Raw binary data
+                data = request.get_data()
+        except:
+            # Fall back to raw data
+            data = request.get_data()
         
-        decrypted_premaster_secret = decrypt_secret(data, self.private_key)
-        if not valid_format(decrypted_premaster_secret):
+        try:
+            decrypted_premaster_secret = decrypt_secret(data, self.private_key)
+            if not valid_format(decrypted_premaster_secret):
+                return jsonify({
+                    "status": "error",
+                    "message": "Invalid premaster secret format"
+                }), 400
+            return jsonify({
+                "status": "client_key_exchange_received",
+                "message": "ClientKeyExchange acknowledged"
+            }), 200
+        except Exception as e:
             return jsonify({
                 "status": "error",
-                "message": "Invalid premaster secret format"
+                "message": f"Decryption failed: {str(e)}"
             }), 400
-        return jsonify({
-            "status": "client_key_exchange_received",
-            "message": "ClientKeyExchange acknowledged"
-        }), 200
     
     def captured_message(self):
         """
