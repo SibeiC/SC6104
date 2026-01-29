@@ -106,12 +106,7 @@ class BleichenbacherClient:
         Returns:
             Server acknowledgment
         """
-        # TODO: Implement ClientKeyExchange
-        # 1. Generate premaster secret (48 bytes: version + 46 random bytes)
-        # 2. Encrypt with server's RSA public key using PKCS#1 v1.5 padding
-        # 3. Send encrypted premaster secret to server
         if encrypted_pms is None:
-            # TODO: Generate and encrypt premaster secret normally
             encrypted_pms = self._encrypt_premaster_secret()
 
         payload = {
@@ -378,15 +373,8 @@ class BleichenbacherClient:
         Returns:
             True if padding is valid, False otherwise
         """
-        # TODO: Implement oracle query
-        # Send modified ciphertext and analyze server response
         try:
             response = self.send_client_key_exchange(modified_ciphertext)
-            # TODO: Determine if padding is valid based on response
-            # Different implementations may leak information through:
-            # - Error messages
-            # - Timing differences
-            # - Different alert types
             return self._is_padding_valid(response)
         except Exception as e:
             return False
