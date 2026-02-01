@@ -128,18 +128,21 @@ class AttackDemo:
         # Simulate attack execution
         try:
             # Step 1: Perform handshake to get server's public key
-            print(f"\n{Colors.CYAN}[*] Performing TLS handshake...{Colors.END}")
+            print(
+                f"\n{Colors.CYAN}[*] Performing TLS handshake...{Colors.END}")
             if not self.client.perform_handshake():
                 print(f"{Colors.RED}[-] Handshake failed!{Colors.END}")
                 return False
             print(f"{Colors.GREEN}[+] Handshake successful{Colors.END}")
-            
+
             # Step 2: Capture an encrypted message from the server
-            print(f"\n{Colors.CYAN}[*] Capturing encrypted message...{Colors.END}")
-            target_ciphertext = self.client.simulate_captured_message()
-            print(f"{Colors.GREEN}[+] Captured {len(target_ciphertext)} bytes{Colors.END}")
             print(
-                f"{Colors.CYAN}[*] Target ciphertext (hex): {target_ciphertext.hex()[:40]}...{Colors.END}")
+                f"\n{Colors.CYAN}[*] Capturing encrypted message...{Colors.END}")
+            target_ciphertext = self.client.simulate_captured_message()
+            print(
+                f"{Colors.GREEN}[+] Captured {len(target_ciphertext)} bytes{Colors.END}")
+            print(
+                f"{Colors.CYAN}[*] Target ciphertext (hex): {target_ciphertext.hex()}{Colors.END}")
             print(f"{Colors.CYAN}[*] Beginning oracle queries...{Colors.END}")
 
             # Execute attack
