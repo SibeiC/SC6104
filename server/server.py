@@ -6,95 +6,10 @@ Implements a Flask server with endpoints mimicking the TLS handshake process.
 
 import os
 import sys
-import random
 from flask import Flask, request, jsonify
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric.padding import calculate_max_pss_salt_length
-
-
-def is_prime(n, k=5):
-    """Miller-Rabin primality test."""
-    if n < 2:
-        return False
-    if n == 2 or n == 3:
-        return True
-    if n % 2 == 0:
-        return False
-
-    # Write n-1 as 2^r * d
-    r, d = 0, n - 1
-    while d % 2 == 0:
-        r += 1
-        d //= 2
-
-    # Witness loop
-    for _ in range(k):
-        a = random.randrange(2, n - 1)
-        x = pow(a, d, n)
-
-        if x == 1 or x == n - 1:
-            continue
-
-        for _ in range(r - 1):
-            x = pow(x, 2, n)
-            if x == n - 1:
-                break
-        else:
-            return False
-    return True
-
-
-def generate_prime(bits):
-    """Generate a prime number with specified bit length."""
-    while True:
-        # Generate random odd number
-        p = random.getrandbits(bits)
-        # Set MSB and LSB to ensure correct bit length and odd number
-        p |= (1 << bits - 1) | 1
-        if is_prime(p):
-            return p
-
-
-def generate_small_rsa_keypair(key_size_bits=320):
-    """Generate RSA keypair with custom key size (for demo only!)."""
-    print(
-        f"[*] Generating custom RSA keypair ({key_size_bits} bits - DEMO ONLY!)...")
-
-    # Generate two primes of half the key size
-    p = generate_prime(key_size_bits // 2)
-    q = generate_prime(key_size_bits // 2)
-
-    # Calculate n and phi(n)
-    n = p * q
-    phi = (p - 1) * (q - 1)
-
-    # Use standard public exponent
-    e = 65537
-
-    # Calculate private exponent d
-    d = pow(e, -1, phi)
-
-    # Build key objects using cryptography library structures
-    from cryptography.hazmat.primitives.asymmetric.rsa import (
-        RSAPrivateNumbers, RSAPublicNumbers
-    )
-
-    # Calculate CRT parameters for private key
-    dmp1 = d % (p - 1)
-    dmq1 = d % (q - 1)
-    iqmp = pow(q, -1, p)
-
-    public_numbers = RSAPublicNumbers(e, n)
-    private_numbers = RSAPrivateNumbers(
-        p, q, d, dmp1, dmq1, iqmp, public_numbers
-    )
-
-    private_key = private_numbers.private_key(default_backend())
-    public_key = private_key.public_key()
-
-    return private_key, public_key
 
 
 def decrypt_secret_raw(data: bytes, private_key) -> bytes:
@@ -170,7 +85,7 @@ class TLSServer:
 
     def __init__(self, private_key=None, public_key=None, port: int = 7265,
                  private_key_file: str = None, public_key_file: str = None,
-                 debug: bool = False):
+                 debug: bool = False, secret_message: str = "Secret Message"):
         """
         Initialize the TLS Server.
 
@@ -181,9 +96,11 @@ class TLSServer:
             private_key_file: Path to armored private key file (optional)
             public_key_file: Path to armored public key file (optional)
             debug: Enable debug mode to save generated keys (default: False)
+            secret_message: Message to encrypt for attack demo (default: "Secret Message")
         """
         self.port = port
         self.debug = debug
+        self.secret_message = secret_message
         self.app = Flask(__name__)
 
         # Load or generate keys
@@ -235,11 +152,15 @@ class TLSServer:
                     backend=default_backend()
                 )
 
-        # Generate new RSA key pair with custom size for demo
-        # Use 120 bits for fast demo speed (completes in few hours)
-        # Note: 120 bits gives enough room for PKCS#1 v1.5 padding + short message
-        # Increase to 160, 192, 256 for more challenge, or 1024 for full strength
-        private_key, public_key = generate_small_rsa_keypair(key_size_bits=120)
+        # TODO: Receive key size as a parameter input, might want to do just 512 for in-class demo
+        # Generate new RSA key pair (1024 bits)
+        print("[*] Generating RSA key pair (1024 bits)...")
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=1024,
+            backend=default_backend()
+        )
+        public_key = private_key.public_key()
 
         # Save keys to files in debug mode
         if self.debug:
@@ -303,21 +224,16 @@ class TLSServer:
         Returns:
             Acknowledgment of key exchange
         """
-        # Try to get JSON data first, fall back to raw data
-        try:
-            json_data = request.get_json()
-            if json_data and 'encrypted_premaster_secret' in json_data:
-                # Hex-encoded data from JSON
-                data = bytes.fromhex(json_data['encrypted_premaster_secret'])
-            else:
-                # Raw binary data
-                data = request.get_data()
-        except:
-            # Fall back to raw data
-            data = request.get_data()
+        json_data = request.get_json()
+        data = b''
+
+        if json_data and 'encrypted_premaster_secret' in json_data:
+            # Hex-encoded data from JSON
+            data = bytes.fromhex(json_data['encrypted_premaster_secret'])
 
         try:
             decrypted_premaster_secret = decrypt_secret(data, self.private_key)
+            # Key vulnerability here: server should not reveal padding validity
             if not valid_format(decrypted_premaster_secret):
                 return jsonify({
                     "status": "error",
@@ -341,9 +257,8 @@ class TLSServer:
             A message encrypted by server's public key, to simulate when the attacker captured a secured
             communication in-flight.
         """
-        message = "X"  # Minimal message for small key demo
         encrypted_message = self.public_key.encrypt(
-            message.encode('utf-8'),
+            self.secret_message.encode('utf-8'),
             padding.PKCS1v15()
         )
         return jsonify({
@@ -363,15 +278,12 @@ class TLSServer:
             "message": "TLS Server is running"
         }), 200
 
-    def run(self, debug: bool = False):
+    def run(self):
         """
         Start the Flask server.
-
-        Args:
-            debug: Enable debug mode (default: False)
         """
         print(f"Starting TLS Server on port {self.port}...")
-        self.app.run(host='0.0.0.0', port=self.port, debug=debug)
+        self.app.run(host='0.0.0.0', port=self.port)
 
 
 if __name__ == "__main__":
