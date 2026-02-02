@@ -38,7 +38,8 @@ class AttackDemo:
 
     def __init__(self, host: str = "localhost", port: int = 7265,
                  private_key_file: str = None, public_key_file: str = None,
-                 debug: bool = False, secret_message: str = "Secret Message"):
+                 debug: bool = False, secret_message: str = "Secret Message",
+                 key_size: int = 1024):
         """
         Initialize the demo.
 
@@ -49,6 +50,7 @@ class AttackDemo:
             public_key_file: Path to public key file (optional)
             debug: Enable debug mode (saves keys to files)
             secret_message: Message to encrypt for attack demo
+            key_size: RSA key size in bits (default: 1024)
         """
         self.host = host
         self.port = port
@@ -56,6 +58,7 @@ class AttackDemo:
         self.public_key_file = public_key_file
         self.debug = debug
         self.secret_message = secret_message
+        self.key_size = key_size
         self.server: Optional[TLSServer] = None
         self.server_thread: Optional[threading.Thread] = None
         self.client: Optional[BleichenbacherClient] = None
@@ -71,7 +74,8 @@ class AttackDemo:
             private_key_file=self.private_key_file,
             public_key_file=self.public_key_file,
             debug=self.debug,
-            secret_message=self.secret_message
+            secret_message=self.secret_message,
+            key_size=self.key_size
         )
 
         # Disable Flask's default logging for cleaner output
@@ -218,8 +222,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run with auto-generated keys
+  # Run with auto-generated keys (default 1024-bit)
   python run.py
+  
+  # Run with 512-bit keys for faster in-class demo
+  python run.py --key-size 512
   
   # Run with custom keys from files
   python run.py --private-key server_private_key.pem --public-key server_public_key.pem
@@ -254,7 +261,12 @@ Examples:
         action='store_true',
         help='Enable debug mode (saves generated keys and log to files)'
     )
-
+    parser.add_argument(
+        '--key-size',
+        type=int,
+        default=1024,
+        help='RSA key size in bits (default: 1024, use 512 for faster in-class demo)'
+    )
     args = parser.parse_args()
 
     # Run demo
@@ -264,7 +276,8 @@ Examples:
         private_key_file=args.private_key_file,
         public_key_file=args.public_key_file,
         debug=args.debug,
-        secret_message=user_message
+        secret_message=user_message,
+        key_size=args.key_size
     )
     demo.run_demo()
 

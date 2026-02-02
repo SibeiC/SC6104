@@ -85,7 +85,8 @@ class TLSServer:
 
     def __init__(self, private_key=None, public_key=None, port: int = 7265,
                  private_key_file: str = None, public_key_file: str = None,
-                 debug: bool = False, secret_message: str = "Secret Message"):
+                 debug: bool = False, secret_message: str = "Secret Message",
+                 key_size: int = 1024):
         """
         Initialize the TLS Server.
 
@@ -97,10 +98,12 @@ class TLSServer:
             public_key_file: Path to armored public key file (optional)
             debug: Enable debug mode to save generated keys (default: False)
             secret_message: Message to encrypt for attack demo (default: "Secret Message")
+            key_size: RSA key size in bits (default: 1024)
         """
         self.port = port
         self.debug = debug
         self.secret_message = secret_message
+        self.key_size = key_size
         self.app = Flask(__name__)
 
         # Load or generate keys
@@ -142,6 +145,8 @@ class TLSServer:
                     backend=default_backend()
                 )
             public_key = private_key.public_key()
+            # Log RSA parameters
+            self._log_rsa_parameters( public_key)
             return private_key, public_key
 
         if public_key_file and os.path.exists(public_key_file):
@@ -152,12 +157,11 @@ class TLSServer:
                     backend=default_backend()
                 )
 
-        # TODO: Receive key size as a parameter input, might want to do just 512 for in-class demo
-        # Generate new RSA key pair (1024 bits)
-        print("[*] Generating RSA key pair (1024 bits)...")
+        # Generate new RSA key pair
+        print(f"[*] Generating RSA key pair ({self.key_size} bits)...")
         private_key = rsa.generate_private_key(
             public_exponent=65537,
-            key_size=1024,
+            key_size=self.key_size,
             backend=default_backend()
         )
         public_key = private_key.public_key()
@@ -165,6 +169,9 @@ class TLSServer:
         # Save keys to files in debug mode
         if self.debug:
             self._save_keys_to_files(private_key, public_key)
+
+        # Log RSA parameters
+        self._log_rsa_parameters(public_key)
 
         return private_key, public_key
 
@@ -195,6 +202,28 @@ class TLSServer:
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             ))
         print(f"[DEBUG] Saved public key to {public_key_path}")
+
+    def _log_rsa_parameters(self, public_key):
+        """
+        Log common RSA parameters for reference.
+
+        Args:
+            private_key: Private key object
+            public_key: Public key object
+        """
+        public_numbers = public_key.public_numbers()
+        n = public_numbers.n
+        e = public_numbers.e
+        key_size_bits = n.bit_length()
+        key_size_bytes = (key_size_bits + 7) // 8
+
+        print("\n" + "="*60)
+        print("RSA Key Parameters")
+        print("="*60)
+        print(f"Key Size: {key_size_bits} bits ({key_size_bytes} bytes)")
+        print(f"Public Exponent (e): {e}")
+        print(f"Modulus (n): {n}")
+        print("="*60 + "\n")
 
     def certificate(self):
         """
@@ -294,6 +323,7 @@ if __name__ == "__main__":
     private_key_file = None
     public_key_file = None
     debug = '--debug' in sys.argv
+    key_size = 1024
 
     if '--private-key' in sys.argv:
         idx = sys.argv.index('--private-key')
@@ -305,10 +335,16 @@ if __name__ == "__main__":
         if idx + 1 < len(sys.argv):
             public_key_file = sys.argv[idx + 1]
 
+    if '--key-size' in sys.argv:
+        idx = sys.argv.index('--key-size')
+        if idx + 1 < len(sys.argv):
+            key_size = int(sys.argv[idx + 1])
+
     server = TLSServer(
         port=7265,
         private_key_file=private_key_file,
         public_key_file=public_key_file,
-        debug=debug
+        debug=debug,
+        key_size=key_size
     )
-    server.run(debug=debug)
+    server.run()

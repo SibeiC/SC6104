@@ -178,7 +178,4 @@ pyrightconfig.json
 server_private_key.pem
 server_public_key.pem
 
-# Attack log file
-bleichenbacher_attack.log
-
 # End of https://www.toptal.com/developers/gitignore/api/python
