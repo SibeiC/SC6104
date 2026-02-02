@@ -39,7 +39,7 @@ class AttackDemo:
     def __init__(self, host: str = "localhost", port: int = 7265,
                  private_key_file: str = None, public_key_file: str = None,
                  debug: bool = False, secret_message: str = "Secret Message",
-                 key_size: int = 1024):
+                 key_size: int = 1024, ciphertext_file: str = None):
         """
         Initialize the demo.
 
@@ -51,6 +51,7 @@ class AttackDemo:
             debug: Enable debug mode (saves keys to files)
             secret_message: Message to encrypt for attack demo
             key_size: RSA key size in bits (default: 1024)
+            ciphertext_file: Path to file containing captured ciphertext (optional)
         """
         self.host = host
         self.port = port
@@ -59,6 +60,7 @@ class AttackDemo:
         self.debug = debug
         self.secret_message = secret_message
         self.key_size = key_size
+        self.ciphertext_file = ciphertext_file
         self.server: Optional[TLSServer] = None
         self.server_thread: Optional[threading.Thread] = None
         self.client: Optional[BleichenbacherClient] = None
@@ -137,10 +139,15 @@ class AttackDemo:
                 return
             print(f"{Colors.GREEN}[+] Handshake successful{Colors.END}")
 
-            # Step 2: Capture an encrypted message from the server
-            print(
-                f"\n{Colors.CYAN}[*] Simulating intercepting an encrypted message...{Colors.END}")
-            target_ciphertext = self.client.simulate_captured_message()
+            # Step 2: Capture an encrypted message from the server or file
+            if self.ciphertext_file:
+                print(
+                    f"\n{Colors.CYAN}[*] Loading captured ciphertext from file: {self.ciphertext_file}{Colors.END}")
+            else:
+                print(
+                    f"\n{Colors.CYAN}[*] Simulating intercepting an encrypted message...{Colors.END}")
+            target_ciphertext = self.client.simulate_captured_message(
+                self.ciphertext_file)
             print(
                 f"{Colors.GREEN}[+] Captured {len(target_ciphertext)} bytes{Colors.END}")
             print(
@@ -173,7 +180,7 @@ class AttackDemo:
         print(f"{Colors.BOLD}{Colors.BLUE}" + "="*60 + f"{Colors.END}\n")
 
         try:
-            # Start server
+            # Start server (needed for handshake and oracle queries)
             self.start_server()
 
             # Initialize client
@@ -205,18 +212,7 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Get message from user for encryption
-    print(f"{Colors.BOLD}{Colors.BLUE}Bleichenbacher Attack Demo{Colors.END}")
-    print(f"{Colors.CYAN}Enter a message to encrypt (or press Enter for default):  {Colors.END}", end="")
-    user_message = input().strip()
-    if not user_message:
-        user_message = "I am Iron Man"
-        print(f"{Colors.YELLOW}Using default message: '{user_message}'{Colors.END}")
-    else:
-        print(f"{Colors.GREEN}Using your message: '{user_message}'{Colors.END}")
-    print()
-
-    # Parse command line arguments
+    # Parse command line arguments first
     parser = argparse.ArgumentParser(
         description='Bleichenbacher Attack Demo',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -233,6 +229,9 @@ Examples:
   
   # Run in debug mode (saves generated keys to files)
   python run.py --debug
+  
+  # Use captured ciphertext from file (server still runs for oracle queries)
+  python run.py --ciphertext-file captured_ciphertext.txt
         """
     )
     parser.add_argument(
@@ -267,7 +266,27 @@ Examples:
         default=1024,
         help='RSA key size in bits (default: 1024, use 512 for faster in-class demo)'
     )
+    parser.add_argument(
+        '--ciphertext-file',
+        dest='ciphertext_file',
+        help='Path to file containing captured ciphertext in hex format (one line). Server is still needed for oracle queries.'
+    )
     args = parser.parse_args()
+
+    # Get message from user only if not using captured ciphertext
+    if args.ciphertext_file:
+        user_message = "N/A (using captured ciphertext)"
+    else:
+        print(f"{Colors.BOLD}{Colors.BLUE}Bleichenbacher Attack Demo{Colors.END}")
+        print(f"{Colors.CYAN}Enter a message to encrypt (or press Enter for default):  {Colors.END}", end="")
+        user_message = input().strip()
+        if not user_message:
+            user_message = "I am Iron Man"
+            print(
+                f"{Colors.YELLOW}Using default message: '{user_message}'{Colors.END}")
+        else:
+            print(f"{Colors.GREEN}Using your message: '{user_message}'{Colors.END}")
+        print()
 
     # Run demo
     demo = AttackDemo(
@@ -277,7 +296,8 @@ Examples:
         public_key_file=args.public_key_file,
         debug=args.debug,
         secret_message=user_message,
-        key_size=args.key_size
+        key_size=args.key_size,
+        ciphertext_file=args.ciphertext_file
     )
     demo.run_demo()
 

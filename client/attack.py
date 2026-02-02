@@ -79,16 +79,26 @@ class BleichenbacherClient:
         )
         return data
 
-    def simulate_captured_message(self) -> bytes:
+    def simulate_captured_message(self, ciphertext_file: Optional[str] = None) -> bytes:
         """
         Simulate capturing an encrypted premaster secret from a ClientKeyExchange.
+
+        Args:
+            ciphertext_file: Optional path to file containing hex-encoded ciphertext
 
         Returns:
             Captured encrypted premaster secret (ciphertext)
         """
-        response = self.session.get(f"{self.base_url}/captured-message")
-        ciphertext_hex = response.json().get("encrypted_message")
-        return bytes.fromhex(ciphertext_hex)
+        if ciphertext_file:
+            # Read ciphertext from file
+            with open(ciphertext_file, 'r', encoding='utf-8') as f:
+                ciphertext_hex = f.read().strip()
+            return bytes.fromhex(ciphertext_hex)
+        else:
+            # Fetch from server
+            response = self.session.get(f"{self.base_url}/captured-message")
+            ciphertext_hex = response.json().get("encrypted_message")
+            return bytes.fromhex(ciphertext_hex)
 
     def send_client_key_exchange(self, encrypted_pms: Optional[bytes] = None) -> Dict[str, Any]:
         """
@@ -296,7 +306,7 @@ class BleichenbacherClient:
                 s_display = f"{s_str[:10]}...{s_str[-10:]}" if len(
                     s_str) > 20 else s_str
                 sys.stdout.write(
-                    f"\r[*] Iteration: {iteration:<5} | Queries: {oracle_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {width_str:<8} | Elapsed: {int(elapsed):>6}s | s={s_display:<23}" + " " * 10)
+                    f"\r[*] Iteration: {iteration:<5} | Queries: {oracle_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {width_str:<6} | Elapsed: {int(elapsed):>6}s | s={s_display:<23}" + " " * 10)
                 sys.stdout.flush()
 
                 # Step 2.c/3: Narrow the set of solutions based on current s
@@ -342,7 +352,8 @@ class BleichenbacherClient:
                             # Find the 0x00 separator after padding
                             sep_index = plaintext.index(b'\x00', 2)
                             message = plaintext[sep_index+1:]
-                            print(f"[+] Extracted message: {message}")
+                            print(
+                                f"[+] Extracted message: {message.decode(errors='ignore')}")
                             return message
                         except:
                             return plaintext
