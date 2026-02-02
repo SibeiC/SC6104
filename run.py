@@ -161,7 +161,7 @@ class AttackDemo:
             if plaintext:
                 print(f"\n{Colors.GREEN}[+] Attack successful!{Colors.END}")
                 print(
-                    f"{Colors.GREEN}[+] Recovered plaintext: {plaintext}{Colors.END}")
+                    f"{Colors.GREEN}[+] Recovered plaintext: {plaintext.decode(errors='ignore')}{Colors.END}")
             else:
                 print(
                     f"\n{Colors.YELLOW}[!] Attack simulation failed{Colors.END}")

