@@ -252,7 +252,7 @@ class BleichenbacherClient:
                         width_bits = width.bit_length()
                         # Show full interval start in hex
                         interval_str = hex(a)
-                        message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: 2^{width_bits:<4} | Elapsed: {int(elapsed):>6}s | interval={interval_str}\n"
+                        message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: 2^{width_bits:<4} | Elapsed: {int(elapsed):>6}s | value={interval_str}\n"
                         self._write_progress(message)
 
                     # Test if this s value produces conforming message
@@ -263,7 +263,7 @@ class BleichenbacherClient:
                         width_bits = width.bit_length()
                         # Show full interval start in hex
                         interval_str = hex(a)
-                        message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: 2^{width_bits:<4} | Elapsed: {int(elapsed):>6}s | interval={interval_str}\n"
+                        message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: 2^{width_bits:<4} | Elapsed: {int(elapsed):>6}s | value={interval_str}\n"
                         self._write_progress(message)
                         return s, queries_used
 
@@ -284,7 +284,7 @@ class BleichenbacherClient:
                     qps = total_queries / elapsed if elapsed > 0 else 0
                     # Show full first interval start in hex
                     interval_str = hex(M[0][0]) if M else "N/A"
-                    message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {'N/A':<8} | Elapsed: {int(elapsed):>6}s | interval={interval_str}\n"
+                    message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {'N/A':<8} | Elapsed: {int(elapsed):>6}s | value={interval_str}\n"
                     self._write_progress(message)
 
                 # Test if this s value produces conforming message
@@ -293,7 +293,7 @@ class BleichenbacherClient:
                     qps = total_queries / elapsed if elapsed > 0 else 0
                     # Show full first interval start in hex
                     interval_str = hex(M[0][0]) if M else "N/A"
-                    message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {'N/A':<8} | Elapsed: {int(elapsed):>6}s | interval={interval_str}\n"
+                    message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {'N/A':<8} | Elapsed: {int(elapsed):>6}s | value={interval_str}\n"
                     self._write_progress(message)
                     return s, queries_used
                     sys.stdout.flush()
@@ -327,9 +327,9 @@ class BleichenbacherClient:
         intervals = [(2 * B, 3 * B - 1)]
         s = s0
 
-        print("[*] Starting interval narrowing (Bleichenbacher Step 2)")
-        print(f"[*] Initial interval: [2B, 3B) where B = {hex(B)}")
-        print("[*] Starting full-scale attack (this may take a while)...\n")
+        print()
+        print(f"Starting range: [2B, 3B) where B = {hex(B)}")
+        print("Starting attack - this will ask the server many yes/no questions...\n")
 
         oracle_queries = 1  # Already did one query to verify conformance
         start_time = time.time()
@@ -357,7 +357,7 @@ class BleichenbacherClient:
                     interval_str = hex(intervals[0][0])
                 else:
                     interval_str = "N/A"
-                message = f"[*] Iteration: {iteration:<5} | Queries: {oracle_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {width_str:<6} | Elapsed: {int(elapsed):>6}s | interval={interval_str}\n"
+                message = f"[*] Iteration: {iteration:<5} | Queries: {oracle_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {width_str:<6} | Elapsed: {int(elapsed):>6}s | value={interval_str}\n"
                 self._write_progress(message)
 
                 # Step 2.c/3: Narrow the set of solutions based on current s
@@ -386,9 +386,6 @@ class BleichenbacherClient:
 
                 # Check if we have narrowed down to a single value
                 if len(intervals) == 1 and intervals[0][0] == intervals[0][1]:
-                    # Clear progress display
-                    self._clear_progress_lines()
-
                     plaintext_int = intervals[0][0]
                     elapsed = time.time() - start_time
                     print(
