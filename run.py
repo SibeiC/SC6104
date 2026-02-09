@@ -164,8 +164,6 @@ class AttackDemo:
                 print(f"\n{Colors.GREEN}[+] Attack successful!{Colors.END}")
                 print(
                     f"{Colors.GREEN}[+] Recovered plaintext: {plaintext.decode(errors='ignore')}{Colors.END}")
-                print(
-                    f"\n{Colors.CYAN}[*] Mitigation: Modern TLS 1.3 eliminates this attack by removing RSA key exchange entirely, using only Diffie-Hellman variants instead.{Colors.END}")
             else:
                 print(
                     f"\n{Colors.YELLOW}[!] Attack simulation failed{Colors.END}")
