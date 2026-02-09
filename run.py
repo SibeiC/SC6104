@@ -153,36 +153,7 @@ class AttackDemo:
             print(
                 f"{Colors.CYAN}[*] Target ciphertext (hex): {target_ciphertext.hex()}{Colors.END}")
 
-            print("\n" + ("="*60))
-            print("[*] Bleichenbacher Attack Explained")
-            print(("="*60) + "\n")
-
-            print("WHAT WE KNOW:")
-            print(
-                f"  - We intercepted encrypted ciphertext 'c' = {target_ciphertext.hex()[:20]}...")
-            print("  - Server's public key: n (modulus) and e (exponent)")
-            print("  - Server tells us if padding is valid (starts with 0x00 0x02)")
             print()
-            print("WHAT WE'RE TRYING TO FIND:")
-            print("  - The original secret message 'm' that was encrypted")
-            print()
-            print("HOW THE ATTACK WORKS:")
-            print("  1. We send modified versions of 'c' to the server (c * s^e)")
-            print("  2. Server decrypts and checks padding - tells us 'yes' or 'no'")
-            print(
-                "  3. Each 'yes' means: the secret m*s landed in range [2B, 3B)")
-            print("  4. We use math to narrow down where m could be:")
-            print(
-                "     - If m*s is in [2B, 3B), then m must be in a smaller range!")
-            print(
-                "     - Formula: if 2B ≤ m*s < 3B, then m is in [2B/s, 3B/s)")
-            print("     - We calculate this for each 'yes' response and intersect ranges")
-            print("  5. Keep trying new s values, each 'yes' shrinks the possible range")
-            print(
-                "  6. We found the padded plaintext message if and when the interval is of size one!")
-
-            input(
-                f"\n{Colors.YELLOW}Press Enter to start the Bleichenbacher Attack...{Colors.END}")
             print(f"{Colors.CYAN}[*] Beginning oracle queries...{Colors.END}")
 
             # Execute attack

